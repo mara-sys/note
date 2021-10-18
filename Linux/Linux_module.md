@@ -28,7 +28,9 @@ static ssize_t polarity_store(struct device *child,
 static DEVICE_ATTR_RW(polarity);
 ```
 在`/sys/class/pwm`下可以看到polarity属性
+
 ![polarity属性](Linux_module_images/080102_polarity_example.png)
+
 通过
 ```shell
 echo 0 > polarity
