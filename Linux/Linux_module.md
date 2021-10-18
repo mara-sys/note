@@ -1,8 +1,8 @@
-#八、 零散的宏定义
-##8.1 DEVICE_ATTR
-###8.1.1 介绍
+# 八、 零散的宏定义
+## 8.1 DEVICE_ATTR
+### 8.1.1 介绍
 &emsp;&emsp;使用DEVICE_ATTR，可以实现驱动在sys目录自动创建文件，我们只需要实现show和store函数即可。然后在应用层就能通过cat和echo命令来对sys创建出来的文件进行读写驱动设备，实现交互。
-###8.1.2 DEVICE_ATTR举例
+### 8.1.2 DEVICE_ATTR举例
 以pwm中的sysfs.c为例。文件位置位于/drivers/pwm/sysfs.c
 ```c
 static ssize_t polarity_show(struct device *child,
@@ -35,7 +35,7 @@ echo 0 > polarity
 cat polarity
 ```
 来对该属性进行读写操作。
-###8.1.3 DEVICE_ATTR分析
+### 8.1.3 DEVICE_ATTR分析
 DEVICE_ATTR定义在/include/linux/device.h中
 ```c
 #define DEVICE_ATTR(_name, _mode, _show, _store) \
@@ -50,7 +50,7 @@ __ATTR定义在/include/linux/sysfs.h中
     .store  = _store,                       \
 }
 ```
-###8.1.4 DEVICE_ATTR_RW、DEVICE_ATTR_RO、DEVICE_ATTR_WO分析
+### 8.1.4 DEVICE_ATTR_RW、DEVICE_ATTR_RO、DEVICE_ATTR_WO分析
 ```c
 #define DEVICE_ATTR_RW(_name) \
     struct device_attribute dev_attr_##_name = __ATTR_RW(_name)
@@ -74,7 +74,7 @@ __ATTR_RW、__ATTR_RO、__ATTR_WO和__ATTR类似，定义在/include/linux/sysfs
 #define __ATTR_RW(_name) __ATTR(_name, 0644, _name##_show, _name##_store)
 ```
 &emsp;&emsp;__ATTR_RO只定义了show函数，函数名字是“_name_show”，类似的__ATTR_WO只定义了store函数，函数名字是”_name_store”，__ATTR_RW同时定义了show、store函数。这三个宏定义是DEVICE_ATTR的简化使用，默认对权限进行了配置。
-###8.1.5 权限标识方法
+### 8.1.5 权限标识方法
 umask变量表示方法
 |加权数值|第1位            |第2位          |第3位              |
 |:---:  |:---             |:---           |:---              |
@@ -87,7 +87,7 @@ umask变量表示方法
 |S_IRUSR	|所有者拥有读权限	|S_IRGRP	|群组拥有读权限	|S_IROTH	|其他用户拥有读权限|
 |S_IWUSR	|所有者拥有写权限	|S_IWGRP	|群组拥有写权限	|S_IWOTH	|其他用户拥有写权限|
 |S_IXUSR	|所有者拥有执行权限	|S_IXGRP	|群组拥有执行权限	|S_IXOTH	|其他用户拥有执行权限|
-###8.1.6 pwm.c中宏定义的展开
+### 8.1.6 pwm.c中宏定义的展开
 因此
 ```c
 static DEVICE_ATTR_RW(polarity);
@@ -102,7 +102,7 @@ struct device_attribute dev_attr_polarity = {
 }
 ```
 其中polarity_show和polarity_store已经在上面实现了。
-###8.1.7 device_attribute结构体的定义
+### 8.1.7 device_attribute结构体的定义
 attribute结构体定义在include/linux/sysfs.h
 ```c
 struct attribute {
@@ -124,7 +124,7 @@ struct device_attribute {
 };
 ```
 &emsp;&emsp;该结构体是对attribute结构体的进一步封装，并提供了两个函数指针，show函数用于读取设备的属性文件，而store则是用于写设备的属性文件，**当我们在linux驱动程序中实现了这两个函数后，便可以使用cat和echo命令对设备属性文件进行读写操作。**
-###8.1.8 将属性公开到文件系统中
+### 8.1.8 将属性公开到文件系统中
 &emsp;&emsp;可以通过ATTRIBUTE_GROUPS宏定义来实现，在pwm的sysfs.c中可以看到，其中的dev_attr_name就是在DEVICE_ATTR中定义的结构体。
 ```c
 static struct attribute *pwm_attrs[] = {
