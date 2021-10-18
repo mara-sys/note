@@ -1,5 +1,14 @@
 
-[toc]
+[八、 零散的宏定义](#八-零散的宏定义)
+  - [8.1 DEVICE_ATTR](#81-device_attr)
+    - [8.1.1 介绍](#811-介绍)
+    - [8.1.2 DEVICE_ATTR举例](#812-device_attr举例)
+    - [8.1.3 DEVICE_ATTR分析](#813-device_attr分析)
+    - [8.1.4 DEVICE_ATTR_RW、DEVICE_ATTR_RO、DEVICE_ATTR_WO分析](#814-device_attr_rwdevice_attr_rodevice_attr_wo分析)
+    - [8.1.5 权限标识方法](#815-权限标识方法)
+    - [8.1.6 pwm.c中宏定义的展开](#816-pwmc中宏定义的展开)
+    - [8.1.7 device_attribute结构体的定义](#817-device_attribute结构体的定义)
+    - [8.1.8 将属性公开到文件系统中](#818-将属性公开到文件系统中)
 
 # 八、 零散的宏定义
 ## 8.1 DEVICE_ATTR
