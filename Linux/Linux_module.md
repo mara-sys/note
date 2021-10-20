@@ -19,9 +19,9 @@
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
 ## 1.1 系统调用
-&emsp;&emsp;命令行输入reboot到busybox中的那部分内容没理解。直接从busybox结束开始调用标准C函数reboot开始。
-&emsp;&emsp;reboot函数直接进行系统调用进入内核。
-&emsp;&emsp;内核系统调用，位于/linux/kernel/reboot.c
+&emsp;&emsp;命令行输入reboot到busybox中的那部分内容没理解。直接从busybox结束开始调用标准C函数reboot开始。  
+&emsp;&emsp;reboot函数直接进行系统调用进入内核。  
+&emsp;&emsp;内核系统调用，位于/linux/kernel/reboot.c  
 ```c
 SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
         void __user *, arg)
@@ -78,8 +78,8 @@ void kernel_restart(char *cmd)
 }
 EXPORT_SYMBOL_GPL(kernel_restart);
 ```
-&emsp;&emsp;进入machine_restart(cmd)函数。
-&emsp;&emsp;machine_restart函数在arch目录下，不同的架构会定义不同的machine_restart函数，和链接中的不太一样，我调试的machine_restart函数位于/linux/arch/riscv/kernel/reset.c
+&emsp;&emsp;进入machine_restart(cmd)函数。  
+&emsp;&emsp;machine_restart函数在arch目录下，不同的架构会定义不同的machine_restart函数，和链接中的不太一样，我调试的machine_restart函数位于`/linux/arch/riscv/kernel/reset.c`  
 ```c
 void machine_restart(char *cmd)
  {   
@@ -105,7 +105,7 @@ void do_kernel_restart(char *cmd)
     atomic_notifier_call_chain(&restart_handler_list, reboot_mode, cmd);
 }
 ```
-&emsp;&emsp;atomic_notifier_call_chain此函数会调用restart_handler_list此链表中注册了的复位函数，如果注册了多个复位函数，则根据设置的结构体的优先级判定执行顺序，priority值越大，优先级越高。
+&emsp;&emsp;atomic_notifier_call_chain此函数会调用restart_handler_list此链表中注册了的复位函数，如果注册了多个复位函数，则根据设置的结构体的优先级判定执行顺序，priority值越大，优先级越高。  
 &emsp;&emsp;此链表的初始化位于reboot.c中
 ```c
 static ATOMIC_NOTIFIER_HEAD(restart_handler_list);
