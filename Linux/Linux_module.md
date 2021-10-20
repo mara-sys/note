@@ -62,7 +62,7 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
     return ret;
 }
 ```
-进入kernel_restart(NULL)函数
+&emsp;&emsp;进入kernel_restart(NULL)函数
 ```c
 void kernel_restart(char *cmd)
 {   
