@@ -10,6 +10,151 @@
     - [8.1.7 device_attribute结构体的定义](#817-device_attribute结构体的定义)
     - [8.1.8 将属性公开到文件系统中](#818-将属性公开到文件系统中)
 
+# 一、reboot
+[参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
+## 1.1 系统调用
+&emsp;&emsp;命令行输入reboot到busybox中的那部分内容没理解。直接从busybox结束开始调用标准C函数reboot开始。
+&emsp;&emsp;reboot函数直接进行系统调用进入内核。
+&emsp;&emsp;内核系统调用，位于/linux/kernel/reboot.c
+```c
+SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+        void __user *, arg)
+{
+    ......
+
+    mutex_lock(&reboot_mutex);
+    switch (cmd) {
+    case LINUX_REBOOT_CMD_RESTART:
+        kernel_restart(NULL);
+        break;
+
+    case LINUX_REBOOT_CMD_CAD_ON:
+        C_A_D = 1;
+        break;
+
+    case LINUX_REBOOT_CMD_CAD_OFF:
+        C_A_D = 0;
+        break;
+
+    case LINUX_REBOOT_CMD_HALT:
+        kernel_halt();
+        do_exit(0);
+        panic("cannot halt");
+
+    case LINUX_REBOOT_CMD_POWER_OFF:
+        kernel_power_off();
+        do_exit(0);
+        break;
+
+    ......
+
+    default:
+        ret = -EINVAL;
+        break;
+    }
+    mutex_unlock(&reboot_mutex);
+    return ret;
+}
+```
+进入kernel_restart(NULL)函数
+```c
+void kernel_restart(char *cmd)
+{   
+    kernel_restart_prepare(cmd);
+    migrate_to_reboot_cpu();
+    syscore_shutdown();
+    if (!cmd)
+        pr_emerg("Restarting system\n");
+    else
+        pr_emerg("Restarting system with command '%s'\n", cmd);
+    kmsg_dump(KMSG_DUMP_RESTART);
+    machine_restart(cmd);
+}
+EXPORT_SYMBOL_GPL(kernel_restart);
+```
+&emsp;&emsp;进入machine_restart(cmd)函数。
+&emsp;&emsp;machine_restart函数在arch目录下，不同的架构会定义不同的machine_restart函数，和链接中的不太一样，我调试的machine_restart函数位于/linux/arch/riscv/kernel/reset.c
+```c
+void machine_restart(char *cmd)
+ {   
+     do_kernel_restart(cmd);
+     while (1);
+ }   
+ 
+ void machine_halt(void)
+ {
+     machine_power_off();
+ }   
+ 
+ void machine_power_off(void)
+ {
+     sbi_shutdown();
+     while (1);
+ }   
+```
+&emsp;&emsp;调用了do_kernel_restart函数，此函数位于/linux/kernel/reboot.c中，
+```c
+void do_kernel_restart(char *cmd)
+{
+    atomic_notifier_call_chain(&restart_handler_list, reboot_mode, cmd);
+}
+```
+&emsp;&emsp;atomic_notifier_call_chain此函数会调用restart_handler_list此链表中注册了的复位函数，如果注册了多个复位函数，则根据设置的结构体的优先级判定执行顺序，priority值越大，优先级越高。
+&emsp;&emsp;此链表的初始化位于reboot.c中
+```c
+static ATOMIC_NOTIFIER_HEAD(restart_handler_list);
+```
+&emsp;&emsp;就是说，只要实现了复位函数，并向此链表注册复位函数，在命令行输入reboot后，就会调用到复位函数。
+## 1.2 复位函数的实现
+### 1.2.1 实例
+&emsp;&emsp;复位函数可以依赖于某个具有复位功能的模块，例如可以通过看门狗复位，那就可以在看门狗中模块中实现复位功能并注册对应的函数。其实只要实现复位函数并注册进restart_handler_list链表即可。例如：
+```c
+#define SYSCTL_BOOT_BASE_ADDR   0x97000000U
+#define SOC_GLB_RST             0x60
+
+static void __iomem *MMAP_ADDR;
+
+//复位功能实现函数
+static int k510_restart(struct notifier_block *this, unsigned long mode, void *cmd)
+{
+    MMAP_ADDR = ioremap(SYSCTL_BOOT_BASE_ADDR + SOC_GLB_RST, 4);
+    
+    writel(((1 << 0) | (1 << 16)), MMAP_ADDR);
+    while(1);
+}   
+
+static int k510_restart_register(void)
+{
+    static struct notifier_block restart_handler;
+
+    restart_handler.notifier_call = k510_restart;
+    restart_handler.priority = 128; 
+    
+    //向链表注册
+    return register_restart_handler(&restart_handler);
+}   
+#endif
+```
+&emsp;&emsp;然后，调用此函数即可，我把这段代码写在了linux/arch/riscv/kernel/setup.c中，在setup_arch函数最后调用了此函数。
+### 1.2.2 注册与注销函数
+```c
+int register_restart_handler(struct notifier_block *nb)
+{
+    return atomic_notifier_chain_register(&restart_handler_list, nb);
+}
+EXPORT_SYMBOL(register_restart_handler);
+
+
+int unregister_restart_handler(struct notifier_block *nb)
+{
+    return atomic_notifier_chain_unregister(&restart_handler_list, nb);
+}
+EXPORT_SYMBOL(unregister_restart_handler);
+```
+### 1.3 通知链表
+[参考链接](http://bbs.chinaunix.net/thread-2011776-1-1.html)
+
+
 # 八、 零散的宏定义
 ## 8.1 DEVICE_ATTR
 ### 8.1.1 介绍
