@@ -15,6 +15,9 @@
     - [8.1.6 pwm.c中宏定义的展开](#816-pwmc中宏定义的展开)
     - [8.1.7 device_attribute结构体的定义](#817-device_attribute结构体的定义)
     - [8.1.8 将属性公开到文件系统中](#818-将属性公开到文件系统中)
+  - [8.2 bitmap DECLARE_BITMAP](#82-bitmap-declare_bitmap)
+    - [8.2.1 使用bitmap的目的](#821-使用bitmap的目的)
+    - [8.2.2 DECLARE_BITMAP](#822-declare_bitmap)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -304,3 +307,69 @@ static struct attribute *pwm_attrs[] = {
 };
 ATTRIBUTE_GROUPS(pwm);
 ```
+
+## 8.2 bitmap DECLARE_BITMAP
+### 8.2.1 使用bitmap的目的
+&emsp;&emsp;bitmap用于实现bool的数组，标识一个事件有没有发生。bitmap将一片连续的空间作为一个数据类型，其中的成员都是1位，长度是bitmap的容量。例如设备驱动中设备号的分配，就可以使用bitmap来标识该设备号是否被使用了。
+### 8.2.2 DECLARE_BITMAP
+```c
+#define DECLARE_BITMAP(name,bits) \
+	unsigned long name[BITS_TO_LONGS(bits)]
+#define BITS_TO_LONGS(nr)       DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
+#define DIV_ROUND_UP(n,d)       (((n) + (d) - 1) / (d))
+#define BITS_PER_BYTE           8
+```
+在32位系统中展开以后就是
+```c
+unsigned long name[(bits + 31)/32]
+```
+在64位系统中展开以后就是
+```c
+unsigned long name[(bits + 63)/64]
+```
+宏定义的功能如下：
+```
+以sizeof(long)为基本单位声明一个bits位的容器（以bit为单位的“数组”），容器的名字是name。
+例如，
+DECLARE_BITMAP(allocated_pwms, 1023)
+就声明了一个名为allocated_pwms的容器，其大小是1023bit（实际上在内存中占据了32个字节，即1024bit）。
+```
+对bitmap操作的API函数
+```c
+    bitmap_zero(dst, nbits)                     *dst = 0UL
+    bitmap_fill(dst, nbits)                     *dst = ~0UL
+    bitmap_copy(dst, src, nbits)                *dst = *src
+    bitmap_and(dst, src1, src2, nbits)          *dst = *src1 & *src2
+    bitmap_or(dst, src1, src2, nbits)           *dst = *src1 | *src2
+    bitmap_xor(dst, src1, src2, nbits)          *dst = *src1 ^ *src2
+    bitmap_andnot(dst, src1, src2, nbits)       *dst = *src1 & ~(*src2)
+    bitmap_complement(dst, src, nbits)          *dst = ~(*src)
+    bitmap_equal(src1, src2, nbits)             Are *src1 and *src2 equal?
+    bitmap_intersects(src1, src2, nbits)        Do *src1 and *src2 overlap?
+    bitmap_subset(src1, src2, nbits)            Is *src1 a subset of *src2?
+    bitmap_empty(src, nbits)                    Are all bits zero in *src?
+    bitmap_full(src, nbits)                     Are all bits set in *src?
+    bitmap_weight(src, nbits)                   Hamming Weight: number set bits
+    bitmap_set(dst, pos, nbits)                 Set specified bit area
+    bitmap_clear(dst, pos, nbits)               Clear specified bit area
+    /* 在bitmap中找到整块的零区域 */
+    bitmap_find_next_zero_area(buf, len, pos, n, mask)  Find bit free area
+    bitmap_find_next_zero_area_off(buf, len, pos, n, mask)  as above
+    bitmap_shift_right(dst, src, n, nbits)      *dst = *src >> n
+    bitmap_shift_left(dst, src, n, nbits)       *dst = *src << n
+    bitmap_remap(dst, src, old, new, nbits)     *dst = map(old, new)(src)
+    bitmap_bitremap(oldbit, old, new, nbits)    newbit = map(old, new)(oldbit)
+    bitmap_onto(dst, orig, relmap, nbits)       *dst = orig relative to relmap
+    bitmap_fold(dst, orig, sz, nbits)           dst bits = orig bits mod sz
+    bitmap_parse(buf, buflen, dst, nbits)       Parse bitmap dst from kernel buf
+    bitmap_parse_user(ubuf, ulen, dst, nbits)   Parse bitmap dst from user buf
+    bitmap_parselist(buf, dst, nbits)           Parse bitmap dst from kernel buf
+    bitmap_parselist_user(buf, dst, nbits)      Parse bitmap dst from user buf
+    bitmap_find_free_region(bitmap, bits, order)  Find and allocate bit region
+    bitmap_release_region(bitmap, pos, order)   Free specified bit region
+    bitmap_allocate_region(bitmap, pos, order)  Allocate specified bit region
+    bitmap_from_arr32(dst, buf, nbits)          Copy nbits from u32[] buf to dst
+    bitmap_to_arr32(buf, src, nbits)            Copy nbits from buf to u32[] dst
+```
+
+
