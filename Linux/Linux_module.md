@@ -18,6 +18,11 @@
   - [8.2 bitmap DECLARE_BITMAP](#82-bitmap-declare_bitmap)
     - [8.2.1 使用bitmap的目的](#821-使用bitmap的目的)
     - [8.2.2 DECLARE_BITMAP](#822-declare_bitmap)
+- [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
+  - [9.1 使用](#91-使用)
+    - [9.1.1 数据结构](#911-数据结构)
+    - [9.1.2 API函数](#912-api函数)
+  - [9.2 示例](#92-示例)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -372,4 +377,184 @@ DECLARE_BITMAP(allocated_pwms, 1023)
     bitmap_to_arr32(buf, src, nbits)            Copy nbits from buf to u32[] dst
 ```
 
+# 九、 高精度定时器hrtimer的使用
+[原帖链接1](https://blog.csdn.net/fuyuande/article/details/82193600?spm=1001.2101.3001.6650.1&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn)
+[原帖链接2](https://blog.csdn.net/qq_33406883/article/details/99641461)
+## 9.1 使用
+### 9.1.1 数据结构
+数据结构定义在<include/linux/hrtimer.h>中
+```c
+/*
+ * The hrtimer structure must be initialized by hrtimer_init()
+ */
+struct hrtimer {
+	struct timerqueue_node		node;
+	ktime_t				_softexpires;
+	enum hrtimer_restart		(*function)(struct hrtimer *);
+	struct hrtimer_clock_base	*base;
+	u8				state;
+	u8				is_rel;
+	u8				is_soft;
+};
+```
+* 字段_softexpires：记录了定时器到期时间
+* 字段function：定时器回调函数，该函数返回一个枚举值，它决定了该hrtimer是否需要被重新激活。
+```c
+enum hrtimer_restart {
+	HRTIMER_NORESTART,	/* Timer is not restarted */
+	HRTIMER_RESTART,	/* Timer must be restarted */
+};
+//在回调函数返回前需要手动设置下一次超时时间。如下所示：  
+enum hrtimer_restart gpio_pwm_timer(struct hrtimer *timer)
+{
+    struct gpio_pwm_data *gpio_data = container_of(timer,
+						      struct gpio_pwm_data,
+						      timer);
+    ......  
+    /* 设置下一次超时时间 */  
+    hrtimer_forward_now(&gpio_data->timer, ns_to_ktime(gpio_data->on_time));
+    ......  
+    return HRTIMER_RESTART;
+}
+//另外，回调函数执行时间不宜过长，因为是在中断上下文中，如果有什么任务的话，最好使用工作队列等机制。  
+//设置回调函数示例如下：
+static struct hrtimer timer;
 
+timer.function = hrtimer_hander;
+```
+* 字段state：用于表示hrtimer当前的状态，有以下几种：
+```c
+#define HRTIMER_STATE_INACTIVE	0x00  // 定时器未激活
+#define HRTIMER_STATE_ENQUEUED	0x01  // 定时器已经被排入红黑树中
+#define HRTIMER_STATE_CALLBACK	0x02  // 定时器的回调函数正在被调用
+#define HRTIMER_STATE_MIGRATE	0x04  // 定时器正在CPU之间做迁移
+```
+### 9.1.2 API函数
+1. 初始化函数：`void hrtimer_init(struct hrtimer *timer, clockid_t clock_id, enum hrtimer_mode mode);`
+```c
+    //参数timer是hrtimer指针，
+    //参数clock_id有如下常用几种选项：
+    CLOCK_REALTIME	//实时时间，如果系统时间变了，定时器也会变
+    CLOCK_MONOTONIC	//递增时间，不受系统影响
+    //参数mode有如下几种选项：
+    HRTIMER_MODE_ABS = 0x0,     /* 绝对模式 */
+    HRTIMER_MODE_REL = 0x1,     /* 相对模式 */
+    HRTIMER_MODE_PINNED = 0x02,	/* 和CPU绑定 */
+    HRTIMER_MODE_ABS_PINNED = 0x02, /* 第一种和第三种的结合 */
+    HRTIMER_MODE_REL_PINNED = 0x03, /* 第二种和第三种的结合 */
+```
+2. 启动定时器：  
+* 无需是指定一个到期范围`hrtimer_start`
+```c
+/*
+ * 参数timer是hrtimer指针
+ * 参数tim是时间，可以使用ktime_set()函数设置时间，
+ * 参数mode和初始化的mode参数一致
+ */
+hrtimer_start(struct hrtimer *timer, ktime_t tim, const enum hrtimer_mode mode)；
+```
+* 需要指定到期范围`hrtimer_start_range_ns`
+```c
+hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+			unsigned long range_ns, const enum hrtimer_mode mode);
+```
+1. 设置时间
+```c
+/*
+ * 单位为秒和纳秒组合
+ */
+ktime_t ktime_set(const long secs, const unsigned long nsecs)；
+ 
+/* 设置超时时间，当定时器超时后可以用该函数设置下一次超时时间 */
+hrtimer_forward_now(struct hrtimer *timer, ktime_t interval)
+```
+4. 关闭定时器：`int hrtimer_cancel(struct hrtimer *timer);`
+
+## 9.2 示例
+示例1
+```c
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/hrtimer.h>
+#include <linux/jiffies.h>
+ 
+//定义一个hrtimer
+static struct hrtimer timer;
+ktime_t kt;
+ 
+//定时器回调函数
+static enum hrtimer_restart hrtimer_hander(struct hrtimer *timer)
+{
+    printk("I am in hrtimer hander\r\n");
+    hrtimer_forward(timer,timer->base->get_time(),kt);//hrtimer_forward(timer, now, tick_period);
+    return HRTIMER_RESTART;  //重启定时器
+}
+ 
+static int __init test_init(void)
+{
+    printk("---------%s-----------\r\n",__func__);
+ 
+    kt = ktime_set(0,1000000);// 0s  1000000ns  = 1ms 定时
+    hrtimer_init(&timer,CLOCK_MONOTONIC,HRTIMER_MODE_REL);
+    hrtimer_start(&timer,kt,HRTIMER_MODE_REL);
+    timer.function = hrtimer_hander;
+    return 0;
+}
+ 
+static void __exit test_exit(void)
+{
+    hrtimer_cancel(&timer);
+    printk("------------test over---------------\r\n");
+}
+ 
+module_init(test_init);
+module_exit(test_exit);
+MODULE_LICENSE("GPL");
+```
+示例2
+```c
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/hrtimer.h>
+#include <linux/jiffies.h>
+#include <linux/time.h>
+#include <linux/timekeeping.h>
+ 
+static struct hrtimer timer;
+ktime_t kt;
+struct timespec oldtc;
+ 
+static enum hrtimer_restart hrtimer_hander(struct hrtimer *timer)
+{
+	struct timespec tc;
+    printk("I am in hrtimer hander : %lu... \r\n",jiffies);
+	getnstimeofday(&tc); //获取新的当前系统时间
+	
+	printk("interval: %ld - %ld = %ld us\r\n",tc.tv_nsec/1000,oldtc.tv_nsec/1000,tc.tv_nsec/1000-oldtc.tv_nsec/1000);
+	oldtc = tc;
+    hrtimer_forward(timer,timer->base->get_time(),kt);
+    return HRTIMER_RESTART;
+}
+ 
+static int __init test_init(void)
+{
+    printk("---------test start-----------\r\n");
+    
+	getnstimeofday(&oldtc);  //获取当前系统时间
+    kt = ktime_set(0,1000000);//1ms
+    hrtimer_init(&timer,CLOCK_MONOTONIC,HRTIMER_MODE_REL);
+    hrtimer_start(&timer,kt,HRTIMER_MODE_REL);
+    timer.function = hrtimer_hander;
+    return 0;
+}
+ 
+static void __exit test_exit(void)
+{
+    hrtimer_cancel(&timer);
+    printk("------------test over---------------\r\n");
+}
+ 
+module_init(test_init);
+module_exit(test_exit);
+MODULE_LICENSE("GPL");
+```
