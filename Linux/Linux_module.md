@@ -558,3 +558,16 @@ module_init(test_init);
 module_exit(test_exit);
 MODULE_LICENSE("GPL");
 ```
+Makefile
+```Makefile
+KERNELDIR := /linux内核路径
+CURRENT_PATH := $(shell pwd)
+obj-m := hrtimer.o
+
+build: kernel_modules
+
+kernel_modules:
+	$(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) modules
+clean:
+	$(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) clean
+```
