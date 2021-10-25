@@ -18,6 +18,9 @@
   - [8.2 bitmap DECLARE_BITMAP](#82-bitmap-declare_bitmap)
     - [8.2.1 使用bitmap的目的](#821-使用bitmap的目的)
     - [8.2.2 DECLARE_BITMAP](#822-declare_bitmap)
+    - [8.2.3 API函数分析](#823-api函数分析)
+      - [8.2.3.1](#8231)
+  - [8.2 Radix tree基数树](#82-radix-tree基数树)
 - [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
   - [9.1 使用](#91-使用)
     - [9.1.1 数据结构](#911-数据结构)
@@ -376,6 +379,61 @@ DECLARE_BITMAP(allocated_pwms, 1023)
     bitmap_from_arr32(dst, buf, nbits)          Copy nbits from u32[] buf to dst
     bitmap_to_arr32(buf, src, nbits)            Copy nbits from buf to u32[] dst
 ```
+### 8.2.3 API函数分析
+#### 8.2.3.1 
+```c
+bitmap_find_next_zero_area(buf, len, pos, n, mask)  Find bit free area
+bitmap_find_next_zero_area_off(buf, len, pos, n, mask)  as above
+```
+`buf`：搜寻的起始地址，`size`：buf中包含的位的总长度，`start`：从buf中start的位置处开始搜寻，`nr`：从start处开始要找到nr个连续的0，`align_mask`：，`align_offset`：。
+示例：
+```c
+static DECLARE_BITMAP(allocated_pwms, MAX_PWMS);
+start = bitmap_find_next_zero_area(allocated_pwms, MAX_PWMS, from, 
+            count, 0);
+/* 申请了一个名为allocated_pwms的位组，长度位MAX_PWMS。  
+从allocated_pwms处开始，搜寻的最大长度是MAX_PWMS，  
+从from偏移处开始搜寻，找到连续count个0. */  
+```
+源码分析：
+```c
+unsigned long bitmap_find_next_zero_area_off(unsigned long *map,
+                                             unsigned long size,
+                                             unsigned long start,
+                                             unsigned int nr,
+                                             unsigned long align_mask,
+                                             unsigned long align_offset)
+{
+        unsigned long index, end, i;
+again:
+        //查找第一个值是0的bit的索引号，从start开始到size结束的区间查找
+        index = find_next_zero_bit(map, size, start);
+
+        /* Align allocation */
+        index = __ALIGN_MASK(index + align_offset, align_mask) - align_offset;
+
+        //判断从找到的值为0的bit的索引开始，加上所需的nr个值以后，
+        //是否超过了总数size。超过就直接返回end。
+        end = index + nr;
+        if (end > size)
+                return end;
+        //如果没有超过，那么就检查从index到end之间有没有值是1的bit，
+        //有的话表示被占用了，需要重新查找。
+        //因为需要连续nr个为0的bit位
+        i = find_next_bit(map, end, index);
+        if (i < end) {  //发现index到end之间有为1的bit位
+                start = i + 1;
+                goto again; //重新找下一个为0的bit
+        }
+        return index;   //找到连续nr个bit为0的，返回起始下标。
+}
+EXPORT_SYMBOL(bitmap_find_next_zero_area_off);
+```
+
+## 8.2 Radix tree基数树
+[原帖链接](https://ivanzz1001.github.io/records/post/data-structure/2018/11/18/ds-radix-tree)
+&emsp;&emsp;使用目的：对于`长整型`数据的映射，怎样解决Hash冲突和Hash表大小的设计是一个非常头疼的问题。radix树就是针对这样的稀疏长整型数据查找，能告诉且节省空间地完成映射。借助于Radix树，我们能够实现对于长整型数据类型地路由。利用radix树能够依据一个长整型（比如一个长ID）高速的找到其相应的对象指针。这比用hash映射来的简单，也更节省空间，使用Hash映射hash函数难以设计，不恰当的hash函数可能增大冲突，或浪费空间。
+
 
 # 九、 高精度定时器hrtimer的使用
 [原帖链接1](https://blog.csdn.net/fuyuande/article/details/82193600?spm=1001.2101.3001.6650.1&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn)
