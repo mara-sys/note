@@ -24,6 +24,9 @@
   - [8.3 mutex](#83-mutex)
     - [8.3.1 mutex的API函数](#831-mutex的api函数)
     - [8.3.2 互斥体的使用如下](#832-互斥体的使用如下)
+- [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
+  - [9.1 使用](#91-使用)
+    - [9.1.1 数据结构](#911-数据结构)
     - [9.1.2 API函数](#912-api函数)
   - [9.2 示例](#92-示例)
 - [十、 PWM框架](#十-pwm框架)
@@ -36,6 +39,13 @@
       - [10.2.1.3 pwm_device](#10213-pwm_device)
       - [10.2.1.4 pwm_chip](#10214-pwm_chip)
     - [10.2.2 函数分析](#1022-函数分析)
+    - [10.3 pwm.txt pwm接口](#103-pwmtxt-pwm接口)
+      - [10.3.1 识别PWM](#1031-识别pwm)
+      - [10.3.2 使用PWM](#1032-使用pwm)
+      - [10.3.3 通过 sysfs 接口使用 PWM](#1033-通过-sysfs-接口使用-pwm)
+      - [10.3.4 实现PWM驱动](#1034-实现pwm驱动)
+      - [10.3.5 锁](#1035-锁)
+      - [10.3.6 Helpers](#1036-helpers)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -463,7 +473,7 @@ mutex_init(&lock); /* 初始化互斥体 */
 mutex_lock(&lock); /* 上锁 */
 /* 临界区 */
 mutex_unlock(&lock); /* 解锁 */
-
+```
 # 九、 高精度定时器hrtimer的使用
 [原帖链接1](https://blog.csdn.net/fuyuande/article/details/82193600?spm=1001.2101.3001.6650.1&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn)
 [原帖链接2](https://blog.csdn.net/qq_33406883/article/details/99641461)
@@ -809,3 +819,77 @@ pwm_set_polarity-->pwm_apply_state-->驱动中的apply//配置极性
 pwm_enable-->pwm_apply_state-->驱动中的apply//使能
 pwm_disable-->pwm_apply_state-->驱动中的apply//失能
 ```
+### 10.3 pwm.txt pwm接口
+&emsp;&emsp;提供了有关 Linux PWM 接口的概述。  
+&emsp;&emsp;PWM 通常用于控制手机中的 LED、风扇或振动器。 具有固定目的的 PWM 不需要实现 Linux PWM API（尽管它们可以）。 然而，PWM 经常被设计为 SoC 上的分立器件，它们没有固定的用途。 由电路板设计人员将它们连接到 LED 或风扇。 为了提供这种灵活性，存在通用 PWM API。
+#### 10.3.1 识别PWM
+&emsp;&emsp;传统 PWM API 的使用者使用唯一 ID 来引用 PWM 设备。   
+&emsp;&emsp;板级设置代码不应通过其唯一 ID 来引用 PWM 设备，而是应注册一个静态映射，该映射可用于将 PWM 消费者与提供者进行匹配，如下例所示：  
+```c
+static struct pwm_lookup board_pwm_lookup[] = {
+    PWM_LOOKUP("tegra-pwm", 0, "pwm-backlight", NULL,
+           50000, PWM_POLARITY_NORMAL),
+};
+
+static void __init board_init(void)
+{
+    ...
+    pwm_add_table(board_pwm_lookup, ARRAY_SIZE(board_pwm_lookup));
+    ...
+}
+```
+#### 10.3.2 使用PWM
+&emsp;&emsp;传统用户可以使用 pwm_request() 请求 PWM 设备，并在使用后使用 pwm_free() 将其释放。 
+&emsp;&emsp;新用户应该使用 pwm_get() 函数并将消费者设备或消费者名称传递给它。 pwm_put() 用于释放 PWM 设备。 这些函数的托管变体 devm_pwm_get() 和 devm_pwm_put() 也存在。 
+&emsp;&emsp;请求后，必须使用以下命令配置 PWM：
+`int pwm_apply_state(struct pwm_device *pwm, struct pwm_state *state);`
+&emsp;&emsp;此API控制PWM周期/占空比配置和启用/禁用状态。
+&emsp;&emsp;pwm_config()、pwm_enable() 和 pwm_disable() 函数只是pwm_apply_state()的包装器，如果用户想一次更改多个参数，则不应使用。 例如，如果您在同一个函数中看到 pwm_config()和pwm_{enable,disable}()调用，这可能意味着您应该切换到 pwm_apply_state()。
+&emsp;&emsp;PWM用户API还允许使用pwm_get_state()查询PWM状态。 
+&emsp;&emsp;除了PWM状态之外，PWM API 还公开了PWM参数，这些参数是应该在此PWM上使用的参考 PWM 配置。PWM参数通常是特定于平台的，并且允许PWM用户只关心相对于整个周期的占空比（例如，占空比=50%的周期）。 struct pwm_args 包含2个字段（周期和极性），应该用于设置初始PWM配置（通常在PWM用户的探测功能中完成）。PWM参数使用 pwm_get_args()检索。
+#### 10.3.3 通过 sysfs 接口使用 PWM
+&emsp;&emsp;如果在内核配置中启用了 CONFIG_SYSFS，则会在用户空间提供一个简单的 sysfs 接口来使用PWM。 它在 /sys/class/pwm/ 公开。 每个探测到的 PWM 控制器/芯片将导出为 pwmchipN，其中 N 是 PWM 芯片的基数。 在目录中，您将找到：
+```C
+  npwm
+    The number of PWM channels this chip supports (read-only).
+
+  export
+    导出与 sysfs 一起使用的 PWM 通道（只写）。
+  unexport
+    Unexports a PWM channel from sysfs (write-only).
+```
+&emsp;&emsp;PWM 通道使用从 0 到 npwm-1 的每芯片索引编号。   
+&emsp;&emsp;当一个 PWM 通道被导出时，一个 pwmX 目录将在它关联的 pwmchipN 目录中创建，其中 X 是被导出的通道的编号。 然后将提供以下属性：
+```C
+ period
+    PWM 信号的总周期（读/写）。
+    值以纳秒为单位，是 PWM 的活动和非活动时间的总和。 
+
+  duty_cycle
+    PWM 信号的有效时间（读/写）。
+    值以纳秒为单位，必须小于周期。
+
+  polarity
+    更改 PWM 信号的极性（读/写）。 
+    仅当 PWM 芯片支持更改极性时，写入此属性才有效。 只有在未启用 PWM 时才能更改极性。 
+    值是字符串“normal”或“inversed”。 
+
+  enable
+    Enable/disable the PWM signal (read/write).
+
+    - 0 - disabled
+    - 1 - enabled
+```
+#### 10.3.4 实现PWM驱动
+&emsp;&emsp;目前有两种方法可以实现 pwm 驱动程序。 传统上只有准系统 API 意味着每个驱动程序必须自己实现 pwm_*() 函数。 这意味着系统中不可能有多个 PWM 驱动器。 因此，新驱动程序必须使用通用 PWM 框架。  
+&emsp;&emsp;可以使用 pwmchip_add() 添加新的 PWM 控制器/芯片，然后使用 pwmchip_remove() 再次删除。 pwmchip_add() 将填充的 struct pwm_chip 作为参数，该参数提供 PWM 芯片的描述、芯片提供的 PWM 设备数量以及支持的 PWM 操作的芯片特定实现到框架。  
+&emsp;&emsp;在 PWM 驱动器中实现极性支持时，请确保遵守 PWM 框架中的信号约定。 根据定义，正常极性表征信号在占空比的持续时间内从高电平开始，并在剩余时间段内变为低电平。 相反，极性相反的信号在占空比的持续时间内从低电平开始，在剩余的周期内变为高电平。  
+&emsp;&emsp;鼓励驱动程序实现 ->apply() 而不是传统的 ->enable()、->disable() 和 ->config() 方法。 这样做应该在 PWM 配置工作流中提供原子性，这是 PWM 控制关键设备（如调节器）时所必需的。  
+&emsp;&emsp;出于同样的原因，也鼓励实现 ->get_state()（一种用于检索初始 PWM 状态的方法）：让 PWM 用户知道当前的 PWM 状态可以让他避免故障。
+#### 10.3.5 锁
+&emsp;&emsp;PWM 内核列表操作受互斥锁保护，因此不能从原子上下文调用 pwm_request() 和 pwm_free()。 当前 PWM 内核不强制对 pwm_enable()、pwm_disable() 和 pwm_config() 进行任何锁定，因此当前调用上下文是特定于驱动程序的。 这是源自以前的准系统 API 的问题，应尽快修复。  
+#### 10.3.6 Helpers
+&emsp;&emsp;目前 PWM 只能配置 period_ns 和 duty_ns。 对于几个用例，freq_hz 和 duty_percent 可能更好。 不要在您的驱动程序中计算这个，请考虑向框架添加适当的帮助程序。  
+
+
+
