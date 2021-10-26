@@ -21,11 +21,21 @@
     - [8.2.3 API函数分析](#823-api函数分析)
       - [8.2.3.1](#8231)
   - [8.2 Radix tree基数树](#82-radix-tree基数树)
-- [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
-  - [9.1 使用](#91-使用)
-    - [9.1.1 数据结构](#911-数据结构)
+  - [8.3 mutex](#83-mutex)
+    - [8.3.1 mutex的API函数](#831-mutex的api函数)
+    - [8.3.2 互斥体的使用如下](#832-互斥体的使用如下)
     - [9.1.2 API函数](#912-api函数)
   - [9.2 示例](#92-示例)
+- [十、 PWM框架](#十-pwm框架)
+  - [10.1 core.c文件分析](#101-corec文件分析)
+    - [10.1.1 函数分析](#1011-函数分析)
+  - [10.2 pwm.h文件分析](#102-pwmh文件分析)
+    - [10.2.1 结构体分析](#1021-结构体分析)
+      - [10.2.1.1 pwm_polarity](#10211-pwm_polarity)
+      - [10.2.1.2 pwm_args和pwm_state](#10212-pwm_args和pwm_state)
+      - [10.2.1.3 pwm_device](#10213-pwm_device)
+      - [10.2.1.4 pwm_chip](#10214-pwm_chip)
+    - [10.2.2 函数分析](#1022-函数分析)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -433,7 +443,26 @@ EXPORT_SYMBOL(bitmap_find_next_zero_area_off);
 ## 8.2 Radix tree基数树
 [原帖链接](https://ivanzz1001.github.io/records/post/data-structure/2018/11/18/ds-radix-tree)
 &emsp;&emsp;使用目的：对于`长整型`数据的映射，怎样解决Hash冲突和Hash表大小的设计是一个非常头疼的问题。radix树就是针对这样的稀疏长整型数据查找，能告诉且节省空间地完成映射。借助于Radix树，我们能够实现对于长整型数据类型地路由。利用radix树能够依据一个长整型（比如一个长ID）高速的找到其相应的对象指针。这比用hash映射来的简单，也更节省空间，使用Hash映射hash函数难以设计，不恰当的hash函数可能增大冲突，或浪费空间。
+## 8.3 mutex
+&emsp;&emsp;互斥访问表示一次只有一个线程可以访问共享资源，不能递归申请互斥体。在我们编写Linux驱动的时候遇到需要互斥访问的地方建议使用mutex。Linux内核使用mutex结构体表示互斥体。  
+### 8.3.1 mutex的API函数
+|函数                                            |描述                                                |
+|------------------------------------------------|---------------------------------------------------|
+|DEFINE_MUTEX(name)                              |定义并初始化一个 mutex 变量。                        |
+|void mutex_init(mutex *lock)                    |初始化mutex                                         |
+|void mutex_lock(struct mutex *lock)             |获取 mutex，也就是给 mutex 上锁。如果获取不到就进休眠。|
+|void mutex_unlock(struct mutex *lock)           |释放 mutex，也就给 mutex 解锁。                      |
+|int mutex_trylock(struct mutex *lock)           |尝试获取 mutex，如果成功就返回 1，如果失败就返回 0。   |
+|int mutex_is_locked(struct mutex *lock)         |判断 mutex 是否被获取，如果是的话就返回1，否则返回 0。 |
+|int mutex_lock_interruptible(struct mutex *lock)|使用此函数获取信号量失败进入休眠以后可以被信号打断。    |
+### 8.3.2 互斥体的使用如下
+```c
+struct mutex lock; /* 定义一个互斥体 */
+mutex_init(&lock); /* 初始化互斥体 */
 
+mutex_lock(&lock); /* 上锁 */
+/* 临界区 */
+mutex_unlock(&lock); /* 解锁 */
 
 # 九、 高精度定时器hrtimer的使用
 [原帖链接1](https://blog.csdn.net/fuyuande/article/details/82193600?spm=1001.2101.3001.6650.1&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn)
@@ -628,4 +657,155 @@ kernel_modules:
 	$(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) modules
 clean:
 	$(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) clean
+```
+# 十、 PWM框架
+文件
+```shell
+drivers/pwm/core.c
+drivers/pwm/sysfs.c
+drivers/pwm/驱动.c
+include/linux/pwm.h
+```
+## 10.1 core.c文件分析
+### 10.1.1 函数分析
+* alloc_pwms
+函数：`static int alloc_pwms(int pwm, unsigned int count)`
+作用：为编号值为`pwm`的pwmchip申请`count`个pwm编号。
+```c
+static int alloc_pwms(int pwm, unsigned int count)
+{
+    ······
+    start = bitmap_find_next_zero_area(allocated_pwms, MAX_PWMS, from,
+                        count, 0);
+
+    //申请成功的条件：申请的pwm编号值需要大于零，且申请到的count个连续为0
+    //的地址的起始索引`start`需要等于申请的pwm编号。
+    //例如：有两个pwmchip，每个pwmchip有三路pwm输出，即（npwm），那么，第一个
+    //pwm编号是0，申请的count值是3，返回的start值是0，相等，申请成功；
+    //第二个pwm编号是2，申请的count值是3，返回的count值是2，相等，申请成功。
+    if (pwm >= 0 && start != pwm)
+        return -EEXIST;
+    ······
+    return start;
+}
+```
+* free_pwms
+函数：`static void free_pwms(struct pwm_chip *chip)`
+作用：释放pwmchip及其下面的pwm_device，还有pwmchip的pwm编号
+```c
+static void free_pwms(struct pwm_chip *chip)
+{
+    unsigned int i;
+
+    //一个pwmchip下面可以有npwm个pwm_device
+    for (i = 0; i < chip->npwm; i++) {
+        struct pwm_device *pwm = &chip->pwms[i];
+    
+        //释放基数树中的pwmchip->pwms
+        radix_tree_delete(&pwm_tree, pwm->pwm);
+    }
+    //清除pwmchip之前申请的npwm个pwm编号
+    bitmap_clear(allocated_pwms, chip->base, chip->npwm);
+    
+    kfree(chip->pwms);
+    chip->pwms = NULL;
+}
+```
+* pwmchip_find_by_name
+函数：`static struct pwm_chip *pwmchip_find_by_name(const char *name)`
+作用：根据`name`来查找pwmchip
+
+* pwm_device_request
+函数：`static int pwm_device_request(struct pwm_device *pwm, const char *label)`
+作用：
+
+* of_pwm_xlate_with_flags
+* of_pwm_simple_xlate
+* of_pwmchip_add
+* of_pwmchip_remove
+* pwm_set_chip_data
+函数：`int pwm_set_chip_data(struct pwm_device *pwm, void *data)`
+作用：为pwm_device配置独有的数据
+* pwm_get_chip_data
+函数：`void *pwm_get_chip_data(struct pwm_device *pwm)`
+作用：获取pwm_device中配置的独有的数据
+* pwm_ops_check
+函数：`static bool pwm_ops_check(const struct pwm_ops *ops)`
+作用：检查驱动是否添加了操作函数，要么同时添加了`config`, `enable`, `disable`这三个传统的非原子操作的函数，要么添加了`apply`原子操作函数。否则返回false
+* pwmchip_add_with_polarity
+函数：`int pwmchip_add_with_polarity(struct pwm_chip *chip,
+			      enum pwm_polarity polarity)`
+作用：注册一个新的pwm chip。如果chip->base < 0，使用动态申请的base号。所有通道的极性被参数`polarity`指定。
+* pwmchip_add
+函数：`int pwmchip_add(struct pwm_chip *chip)`
+作用：与上面的一样，只是没有添加默认的极性。
+* pwmchip_remove
+函数：`int pwmchip_remove(struct pwm_chip *chip)`
+作用：移除pwm_chip
+* pwm_apply_state
+函数：`int pwm_apply_state(struct pwm_device *pwm, struct pwm_state *state)`
+作用：将新的pwm状态设到pwm device中，如果driver中使用的新的apply函数，则使用apply函数，否则使用旧的enable, config等函数。
+* pwm_capture
+函数：`int pwm_capture(struct pwm_device *pwm, struct pwm_capture *result,
+		unsigned long timeout)`
+作用：捕获pwm_device的数据
+* pwm_adjust_config
+函数：`int pwm_adjust_config(struct pwm_device *pwm)`
+作用：此函数将根据设备树或PWM查找表提供的PWM参数调整PWM配置。这对于bootloader配置Linux很有用。就是根据结构体pwm_args中的参数来配置pwm，pwm_state结构体保存的是读取的pwm的参数信息，pwm_args结构体保存的是要配给pwm的参数。  
+* of_node_to_pwmchip
+函数：`static struct pwm_chip *of_node_to_pwmchip(struct device_node *np)`
+作用：根据设备节点找到pwm_chip
+
+
+## 10.2 pwm.h文件分析
+### 10.2.1 结构体分析
+#### 10.2.1.1 pwm_polarity
+```c
+enum pwm_polarity {
+	PWM_POLARITY_NORMAL,    //duty_cycle是高电平持续时间
+	PWM_POLARITY_INVERSED,  //duty_cycle是低电平持续时间
+};
+```
+#### 10.2.1.2 pwm_args和pwm_state
+&emsp;&emsp;pwm_args是我们要配置给pwm设备的参数，pwm_state是从pwm设备中读回来的现在pwm设备的状态。
+#### 10.2.1.3 pwm_device
+结构体Pwm_chip表示一个pwm模块，pwm_device表示一路pwm输出，pwm_chip可以包括多个pwm_device
+```c
+struct pwm_device {
+	const char *label;     //pwm设备的名字
+	unsigned long flags;   //pwm设备的flags，是否使用的标志
+	unsigned int hwpwm;    //每个pwm_chip中pwm_device的索引
+	unsigned int pwm;      //pwm_device的全局索引
+	struct pwm_chip *chip; //提供了此pwm_device设备的pwm_chip
+	void *chip_data;       //于pwm_device相关的芯片私有数据
+
+	struct pwm_args args;
+	struct pwm_state state;
+};
+```
+#### 10.2.1.4 pwm_chip
+```c
+struct pwm_chip {
+	struct device *dev;        
+	struct list_head list;     
+	const struct pwm_ops *ops;  //pwm控制器的回调函数
+	int base;                   //这个chip控制的第一路pwm输出的number
+	unsigned int npwm;          //这个chip一共控制了多少路pwm输出
+
+	struct pwm_device *pwms;    //框架申请的pwm设备的数组
+
+    /* 根据设备树 PWM 说明符请求 PWM 设备  */
+	struct pwm_device * (*of_xlate)(struct pwm_chip *pc,
+					const struct of_phandle_args *args);
+	unsigned int of_pwm_n_cells;//设备树 PWM 说明符中预期的单元数
+};
+```
+### 10.2.2 函数分析
+&emsp;&emsp;就是一些简单的获取状态，设置状态的函数。
+&emsp;&emsp;函数调用关系：
+```c
+pwm_config-->pwm_apply_state-->驱动中的apply//配置周期和占空比
+pwm_set_polarity-->pwm_apply_state-->驱动中的apply//配置极性
+pwm_enable-->pwm_apply_state-->驱动中的apply//使能
+pwm_disable-->pwm_apply_state-->驱动中的apply//失能
 ```
