@@ -24,6 +24,9 @@
   - [8.3 mutex](#83-mutex)
     - [8.3.1 mutex的API函数](#831-mutex的api函数)
     - [8.3.2 互斥体的使用如下](#832-互斥体的使用如下)
+  - [8.4 ioctl的cmd——_IO](#84-ioctl的cmd_io)
+    - [8.4.1 示例](#841-示例)
+    - [8.4.2 代码分析](#842-代码分析)
 - [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
   - [9.1 使用](#91-使用)
     - [9.1.1 数据结构](#911-数据结构)
@@ -474,6 +477,70 @@ mutex_lock(&lock); /* 上锁 */
 /* 临界区 */
 mutex_unlock(&lock); /* 解锁 */
 ```
+
+## 8.4 ioctl的cmd——_IO
+该宏定义在头文件`/include/uapi/asm-generic/ioctl.h`中。下面分析一下该文件。  
+### 8.4.1 示例
+&emsp;&emsp;例如用户空间测试rtc的文件rtctest.c中有这样的用法：
+```c
+retval = ioctl(fd, RTC_UIE_ON, 0);
+```
+&emsp;&emsp;`RTC_UIE_ON`定义在`rtc.h`中：
+```c
+#define RTC_UIE_ON	_IO('p', 0x03)	/* Update int. enable on */
+```
+&emsp;&emsp;在驱动程序中，有对命令`RTC_UIE_ON`的处理：
+```c
+case RTC_UIE_ON:
+    mutex_unlock(&rtc->ops_lock);
+    return rtc_update_irq_enable(rtc, 1);
+```
+&emsp;&emsp;用户空间调用ioctl函数，其命令最终在驱动中得到解释并执行，此命令的格式与解析就是通过`_IO`等函数实现的。
+### 8.4.2 代码分析
+&emsp;&emsp;ioctl的命令一共有32bit，区域划分为：
+* bit31-bit30  共2位，区分读写命令
+* bit29-bit16  共14位，表示ioctl中的arg变量传送的内存大小
+* bit15-bit08  共8位，也成为“魔数”，用于与其他设备驱动程序的ioctl命令进行区分
+* bit07-bit00  共8位，是区分命令的命令顺序序号
+
+&emsp;&emsp;上面这些位的宏定义经过化简后如下：
+```c
+#define _IOC_NRSHIFT	0
+#define _IOC_TYPESHIFT	8
+#define _IOC_SIZESHIFT	16
+#define _IOC_DIRSHIFT	30
+```
+&emsp;&emsp;实现命令最基本的宏定义如下：
+```c
+#define _IOC(dir,type,nr,size) \
+	(((dir)  << _IOC_DIRSHIFT) | \
+	 ((type) << _IOC_TYPESHIFT) | \
+	 ((nr)   << _IOC_NRSHIFT) | \
+	 ((size) << _IOC_SIZESHIFT))
+//即
+#define _IOC(dir,type,nr,size) \
+	(((dir)  << 30) | \
+	 ((type) <<  8) | \
+	 ((nr)   <<  0) | \
+	 ((size) << 16))
+```
+&emsp;&emsp;别的命令就是对上面命令的一层封装，如下：
+```c
+#define _IO(type,nr)		_IOC(_IOC_NONE,(type),(nr),0)
+#define _IOR(type,nr,size)	_IOC(_IOC_READ,(type),(nr),(_IOC_TYPECHECK(size)))
+#define _IOW(type,nr,size)	_IOC(_IOC_WRITE,(type),(nr),(_IOC_TYPECHECK(size)))
+#define _IOWR(type,nr,size)	_IOC(_IOC_READ|_IOC_WRITE,(type),(nr),(_IOC_TYPECHECK(size)))
+```
+&emsp;&emsp;对命令的解析就是上面过程的逆过程，如下：
+```c
+#define _IOC_DIR(nr)		(((nr) >> _IOC_DIRSHIFT) & _IOC_DIRMASK)
+#define _IOC_TYPE(nr)		(((nr) >> _IOC_TYPESHIFT) & _IOC_TYPEMASK)
+#define _IOC_NR(nr)		    (((nr) >> _IOC_NRSHIFT) & _IOC_NRMASK)
+#define _IOC_SIZE(nr)		(((nr) >> _IOC_SIZESHIFT) & _IOC_SIZEMASK)
+```
+
+
+
 # 九、 高精度定时器hrtimer的使用
 [原帖链接1](https://blog.csdn.net/fuyuande/article/details/82193600?spm=1001.2101.3001.6650.1&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7Edefault-1.tagcolumn)
 [原帖链接2](https://blog.csdn.net/qq_33406883/article/details/99641461)
