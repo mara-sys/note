@@ -49,6 +49,8 @@
     - [10.3.4 实现PWM驱动](#1034-实现pwm驱动)
     - [10.3.5 锁](#1035-锁)
     - [10.3.6 Helpers](#1036-helpers)
+- [十一、 用户空间函数的使用](#十一-用户空间函数的使用)
+  - [poll函数](#poll函数)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -958,5 +960,67 @@ static void __init board_init(void)
 ### 10.3.6 Helpers
 &emsp;&emsp;目前 PWM 只能配置 period_ns 和 duty_ns。 对于几个用例，freq_hz 和 duty_percent 可能更好。 不要在您的驱动程序中计算这个，请考虑向框架添加适当的帮助程序。  
 
+# 十一、 用户空间函数的使用
+## poll函数
+&emsp;&emsp;函数原型：`int poll(struct pollfd *fds, nfds_t nfds, int timeout);`
+&emsp;&emsp;头文件：`#include <poll.h>`
+&emsp;&emsp;作用：等待给定的文件描述符上的事件发生。执行与select(2)类似的任务：等待一组文件描述符中的一个文件描述符变为准备好执行I/O的状态。要监视的文件描述符集在 `fds` 参数中指定，它是以下形式的结构数组：
+```c
+struct pollfd {
+    int   fd;         /* file descriptor */
+    short events;     /* requested events */
+    short revents;    /* returned events */
+};
+```
+&emsp;&emsp;参数含义：
+* fds：要监视的文件描述符集
+* nfds：文件描述符的个数
+* timeout：以毫秒为单位，设置poll的等待超时时间。timeout为负数表示无限等待，为0表示调用后立即返回，成功则返回结构体`revents`中不为0的文件描述符的个数。
+  
+poll调用将会在以下情况返回：
+* 有一个文件描述符变为准备好的状态
+* 调用被signal handler中断
+* 超时
 
+&emsp;&emsp;pollfd结构键控的时间类型如下：
+```c
+#define POLLIN     0x0001  //有数据可读
+#define POLLPRI    0x0002  //有紧迫数据可读
+#define POLLOUT    0x0004  //写数据不会导致阻塞
+#define POLLERR    0x0008  //指定的文件描述符发生错误。
+#define POLLHUP    0x0010  //指定的文件描述符挂起事件。
+#define POLLNVAL   0x0020  //指定的文件描述符非法。
+#define POLLRDNORM 0x0040  //有普通数据可读
+#define POLLRDBAND 0x0080  //有优先数据可读
+#define POLLWRNORM 0x0100  //写普通数据不会导致阻塞
+#define POLLWRBAND 0x0200  //写优先数据不会导致阻塞。
+#define POLLMSG    0x0400  //
+#define POLLREMOVE 0x1000  //
+#define POLLRDHUP  0x2000  //
+```
+&emsp;&emsp;如上是events事件掩码的值域，POLLIN|POLLPRI类似于select的读事件，POLLOUT|POLLWRBAND类似于select的写事件。当events属性为POLLIN|POLLOUT，表示监控是否可读或可写。在poll返回时，即可通过检查revents变量对应的标志位与events是否相同，比如revents中POLLIN事件标志位被设置，则表示文件描述符可以被读取。代码段示例：
+```c
+int sockfd;				//套接字句柄
+struct pollfd pollfds;
+int timeout;
+ 
+timeout = 5000;
+pollfds.fd = sockfd;				//设置监控sockfd
+pollfds.events = POLLIN|POLLPRI;			//设置监控的事件
+ 
+for(;;){
+	switch(poll(&pollfds,1,timeout)){		//开始监控
+	case -1:					//函数调用出错
+		printf("poll error \r\n");
+	break;
+	case 0:
+		printf("time out \r\n");
+	break;
+	default:					//得到数据返回
+		printf("sockfd have some event \r\n");
+		printf("event value is 0x%x",pollfds.revents);
+	break;
+	}
+} 
+```
 
