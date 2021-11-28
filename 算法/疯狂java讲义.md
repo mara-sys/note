@@ -194,6 +194,21 @@ public class DogTest
     }
 }
 ```
+&emsp;&emsp;输出结果如下：
+```shell
+PS G:\PROGRAM\JAVA\prg\first> java DogTest
+name: null
+color: null
+weight: 0.0
+
+name: 孙悟空
+color: yellow
+weight: 0.0
+
+name: 猪八戒
+color: black
+weight: 300.0
+```
 &emsp;&emsp;在这里第三个构造器通过this来调用另一个重载构造器的初始化代码。**使用this调用另一个重载的构造器只能在构造器中使用，而且必须作为构造器执行体的第一条语句**
 ### 5.6 类的继承
 &emsp;&emsp;Java的继承具有单继承的特点，每个子类都只有一个直接父类。
@@ -222,6 +237,56 @@ public class DogTest
 &emsp;&emsp;子类不会获得父类的构造器，但是子类构造器里可以调用父类构造器的初始化代码。  
 &emsp;&emsp;在子类构造器中调用父类构造器使用super来完成，super调用父类构造器必须出现在子类构造器执行体的第一行，因此this和super调用不会同时出现。  
 ## 5.7 多态
+&emsp;&emsp;Java引用变量有两个类型：一个是编译时类型，一个是运行时类型。编译时类型由声明该变量时使用的类型决定，运行时类型由实际赋给改变量的对象决定。如果编译时类型和运行时类型不一致，就可能出现所谓的多态。
+```java
+class BaseClass
+{
+    public int book = 6;
+    public void base()
+    {
+        System.out.println("父类的普通方法");
+    }
+    public void test()
+    {
+        System.out.println("父类被覆盖的方法：test");
+    }
+}
+
+public class SubClass extends BaseClass
+{
+    public String book = "子类的变量book";
+    public void test()
+    {
+        System.out.println("子类覆盖父类的方法：test");
+    }
+    public void sub()
+    {
+        System.out.println("子类的普通方法");
+    }
+    public static void main(String[] args)
+    {
+        BaseClass ploymophicBc = new SubClass();
+
+        //输出6
+        //与方法不同，对象的实例变量不具有多态性
+        System.out.println(ploymophicBc.book);
+
+        //输出“父类的普通方法”
+        ploymophicBc.base();
+
+        //输出“子类覆盖父类的方法：test”
+        ploymophicBc.test();
+
+        //下面不注释会编译出错
+        //ploymophicBc.sub();
+    }
+}
+```
+&emsp;&emsp;子类是一种特殊的父类，因此Java允许把一个子类对象直接赋给一个父类引用变量，无需任何类型转换，或者被称为`向上转型`。  
+&emsp;&emsp;如上所示，当把一个子类对象直接赋给父类引用变量时，其编译类型时父类BaseClass，运行时类型是子类SubClass。其方法行为总是表现出子类方法的行为特征而不是父类方法的行为特征。  
+&emsp;&emsp;引用变量在编译阶段只能调用其编译时类型所具有的方法，但运行时则执行它运行时类型所具有的方法，这就是上面调用.sub函数时出错的原因。  
+
+
 
 
 
