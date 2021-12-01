@@ -10,6 +10,7 @@
 &emsp;&emsp;在系统正常运行期间，软件可以使用温度传感器计数器输出 (TEMP_CNT) 和熔断器温度校准数据来确定片上运行温度或将过温中断警报设置在几°C 以内。
 &emsp;&emsp;根据校准，可通过设备上的保险丝获得两组温度和计数器值。 这些数据点将对应于下面曲线中的点 (N1, T1) 和 (N2, T2)。 
 &emsp;&emsp;在温度测量周期之后，软件应结合使用校准点和 TEMPMON_TEMPSENSE0[TEMP_CNT] 位域中的温度代码值，使用以下公式计算设备的温度： 
+$$T_{meas} = T_2 - (N_{meas} - N_2) * ((T_2 - T_1)/(N_1 - N_2))$$
 &emsp;&emsp;同样，为了确定要写入 TEMPMON_TEMPSENSE0 寄存器中的警报计数器值，用于基于温度的中断，可以根据所需的温度触发器对应使用的 Nmeas 值求解上述等式。
 &emsp;&emsp;OCOTP_ANA1 寄存器中提供了温度校准点保险丝值。 在产品测试过程中，每个部件的温度校准值都是单独融合的。 下表描述了该寄存器的字段。 
 ### 52.3 TEMPMON 寄存器定义
@@ -31,6 +32,9 @@
 #### 52.3.3 Tempsensor Control Register 2
 * 27-16 PANIC_ALARM_VALUE
 * 11-0 LOW_ALARM_VALUE
+
+## imx_thermal.c文件分析
+
 
 
 
