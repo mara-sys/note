@@ -30,7 +30,7 @@ $$T_{meas} = T_2 - (N_{meas} - N_2) * ((T_2 - T_1)/(N_1 - N_2))$$
 #### 52.3.2 Tempsensor Control Register 1
 &emsp;&emsp;该寄存器定义了温度传感器的自动重复时间。 
 #### 52.3.3 Tempsensor Control Register 2
-* 27-16 PANIC_ALARM_VALUE
+* 27-16 PANIC_ALARM_VALUE 
 * 11-0 LOW_ALARM_VALUE
 
 ## imx_thermal.c文件分析

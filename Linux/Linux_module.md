@@ -361,7 +361,7 @@ unsigned long name[(bits + 31)/32]
 unsigned long name[(bits + 63)/64]
 ```
 宏定义的功能如下：
-```
+```shell
 以sizeof(long)为基本单位声明一个bits位的容器（以bit为单位的“数组”），容器的名字是name。
 例如，
 DECLARE_BITMAP(allocated_pwms, 1023)
