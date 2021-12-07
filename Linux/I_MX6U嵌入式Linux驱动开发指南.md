@@ -1,6 +1,62 @@
 # I.MX6U嵌入式Linux驱动开发指南
 
 # 第四篇 ARM Linux 驱动开发篇
+&emsp;&emsp;查看设备状态总结
+1. 查看设备号
+```shell
+cat /proc/devices
+```
+## 驱动相关知识总结
+### 1 Linux 设备号
+#### 1.1 设备号的组成
+&emsp;&emsp;Linux 中每个设备都有一个设备号，设备号由主设备号和次设备号两部分组成，**主设备号表示某一个具体的驱动，次设备号表示使用这个驱动的各个设备。**
+&emsp;&emsp;Linux 提供了一个名为`dev_t`的数据类型表示设备号，其定义如下：
+```c
+typedef unsigned int __u32;
+typedef __u32 __kernel_dev_t;
+typedef __kernel_dev_t dev_t;
+```
+&emsp;&emsp;即`dev_t`是一个 unsigned int 类型。其中高12位为主设备号，低20位为次设备号。
+&emsp;&emsp;几个操作设备号的操作函数（本质上就是宏，掩码和移位）：
+```c
+#define MINORBITS 20
+#define MINORMASK ((1U << MINORBITS) - 1)
+
+#define MAJOR(dev) ((unsigned int) ((dev) >> MINORBITS))
+#define MINOR(dev) ((unsigned int) ((dev) & MINORMASK))
+#define MKDEV(ma,mi) (((ma) << MINORBITS) | (mi))
+```
+* MAJOR：从`dev_t`中获取主设备号。
+* MINOR：从`dev_t`中获取次设备号。
+* MKDEV：将给定的主设备号和次设备号组成 dev_t 类型的设备号。
+#### 1.2 设备号的分配
+1. 静态分配设备号
+&emsp;&emsp;静态分配设备号需要我们检查当前系统中所有被使用了的设备号，然后挑选一个没有使用的。
+2. 动态分配设备号
+&emsp;&emsp;在注册字符设备之前先申请一个设备号，系统自动分配一个没有被使用的设备号，卸载驱动时释放掉这个设备号即可。
+```c
+/* 
+ * dev: 保存申请到的设备号
+ * baseminor: 次设备号起始地址，此函数可以申请一段连续的多个次设备号，
+ *            这些设备号的主设备号一样，但是次设备号不同，次设备号以
+ *            baseminor为起始地址开始递增。一般为0。
+ * count: 要申请的设备号的数量。
+ * name: 设备名字。
+ */
+int alloc_chrdev_region(dev_t *dev, unsigned baseminor, 
+        unsigned count, const char *name)
+/* 
+ * from: 要释放的设备号。
+ * count: 表示从 from 开始，要释放的设备号的数量。
+ */
+void unregister_chrdev_region(dev_t from, unsigned count)
+```
+
+
+
+
+
+
 ## 第四十章 字符设备驱动开发
 ### 40.1 字符设备驱动简介
 &emsp;&emsp;字符设备就是一个一个字节，按照字节流进行读写操作的设备，读写数据是分先后顺序的。
@@ -39,8 +95,57 @@ static inline int register_chrdev(unsigned int major,
 static inline void unregister_chrdev(unsigned int major, 
     const char *name)
 ```
+&emsp;&emsp;这两个函数的参数含义如下：
+* major：主设备号。
+* name：设备名字，指向一串字符串。
+* fops：结构体 file_operations 类型的指针，指向设备的操作函数集合变量。
 
 
+#### 40.2.4 添加 LICENSE 和作者信息
+```c
+MODULE_LICENSE() //添加模块 LICENSE 信息，必须添加
+MODULE_AUTHOR()  //添加模块作者信息，可以不添加
+```
+
+
+&emsp;&emsp;总结起来，字符设备的驱动编写模板如下：
+```c
+static struct file_operations test_fops;
+
+/* 下面这些是根据自己需求需要实现的回调函数 */
+static struct file_operations test_fops = {
+    .owner = THIS_MODULE,
+    .open = chrtest_open,
+    .read = chrtest_read,
+    .write = chrtest_write,
+    .release = chrtest_release,
+};
+
+/* 驱动入口函数 */
+static int __init xxx_init(void)
+{
+    /* 入口函数具体内容 */
+    int retvalue = 0;
+
+    /* 注册字符设备驱动 */
+    retvalue = register_chrdev(200, "chrtest", &test_fops);
+    if(retvalue < 0){
+        /* 字符设备注册失败,自行处理 */
+    }
+    return 0;
+}
+
+/* 驱动出口函数 */
+static void __exit xxx_exit(void)
+{
+    /* 注销字符设备驱动 */
+    unregister_chrdev(200, "chrtest");
+}
+
+/* 将上面两个函数指定为驱动的入口和出口函数 */
+module_init(xxx_init);
+module_exit(xxx_exit);
+```
 
 ## 第五十一章 Linux中断实验
 
