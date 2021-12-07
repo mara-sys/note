@@ -52,9 +52,30 @@ int alloc_chrdev_region(dev_t *dev, unsigned baseminor,
 void unregister_chrdev_region(dev_t from, unsigned count)
 ```
 
-
-
-
+### 2 printk 函数消息级别
+&emsp;&emsp;printk 可以根据日志级别对消息进行分类，一共有8个消息级别，0的优先级最高，7的优先级最低。定义在文件`include/linux/kern_level.h`中
+```c
+#define KERN_SOH "\001"
+#define KERN_EMERG KERN_SOH "0"   /* 紧急事件，一般是内核崩溃 */
+#define KERN_ALERT KERN_SOH "1"   /* 必须立即采取行动 */
+#define KERN_CRIT KERN_SOH "2"    /* 临界条件，比如严重的软件或硬件错误*/
+#define KERN_ERR KERN_SOH "3"     /* 错误状态，一般设备驱动程序中使用
+                                     KERN_ERR 报告硬件错误 */
+#define KERN_WARNING KERN_SOH "4" /* 警告信息，不会对系统造成严重影响 */
+#define KERN_NOTICE KERN_SOH "5"  /* 有必要进行提示的一些信息 */
+#define KERN_INFO KERN_SOH "6"    /* 提示性的信息 */
+#define KERN_DEBUG KERN_SOH "7"   /* 调试信息 */
+```
+&emsp;&emsp;如果要设置消息级别，示例如下：
+```c
+printk(KERN_EMERG "gsmi: Log Shutdown Reason\n");
+```
+&emsp;&emsp;如果使用 printk 的时候不显示的设置消息级别，默认采用`MESSAGE_LOGLEVEL_DEFAULT`，默认为4。
+&emsp;&emsp;在`include/linux/printk.h`中有个宏`CONSOLE_LOGLEVEL_DEFAULT`，定义如下：
+```c
+#define CONSOLE_LOGLEVEL_DEFAULT 7
+```
+&emsp;&emsp;此宏默认为 7，意味着只有优先级高于 7 的消息才能显示在控制台上。
 
 
 ## 第四十章 字符设备驱动开发
@@ -146,6 +167,36 @@ static void __exit xxx_exit(void)
 module_init(xxx_init);
 module_exit(xxx_exit);
 ```
+
+### 40.4 
+#### 40.4.3 编译驱动程序和测试APP
+1. 编译驱动程序（编译成 .ko 文件，insmod）
+```Makefile
+KERNELDIR := /home/zuozhongkai/linux/IMX6ULL/linux/temp/linux-imxrel_imx_4.1.15_2.1.0_ga_alientek
+CURRENT_PATH := $(shell pwd)
+obj-m := chrdevbase.o
+
+build: kernel_modules
+
+kernel_modules:
+    $(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) modules
+clean:
+    $(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) clean
+```
+2. 编译测试APP
+```Makefile
+arm-linux-gnueabihf-gcc chrdevbaseApp.c -o chrdevbaseApp
+```
+#### 40.4.4 运行测试
+&emsp;&emsp;驱动加载成功以后需要在 /dev 下面创建一个与之对应的设备节点文件，应用程序通过此设备节点来操作具体的设备。
+```shell
+mknod /dev/chrdevbase c 200 0
+```
+&emsp;&emsp;然后操作此文件即可。
+
+## 第四十一章 嵌入式 Linux LED 驱动开发实验
+
+
 
 ## 第五十一章 Linux中断实验
 
