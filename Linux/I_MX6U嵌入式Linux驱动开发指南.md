@@ -29,13 +29,24 @@ typedef __kernel_dev_t dev_t;
 * MAJOR：从`dev_t`中获取主设备号。
 * MINOR：从`dev_t`中获取次设备号。
 * MKDEV：将给定的主设备号和次设备号组成 dev_t 类型的设备号。
-#### 1.2 设备号的分配
+#### 1.2 旧设备号的分配
+&emsp;&emsp;见 40.2.2 节。
+#### 1.3 新设备号的分配
 1. 静态分配设备号
 &emsp;&emsp;静态分配设备号需要我们检查当前系统中所有被使用了的设备号，然后挑选一个没有使用的。
 2. 动态分配设备号
 &emsp;&emsp;在注册字符设备之前先申请一个设备号，系统自动分配一个没有被使用的设备号，卸载驱动时释放掉这个设备号即可。
 ```c
 /* 
+ * 静态申请设备号
+ * from: 要申请的起始设备号，也就是给定的设备号。
+ * count: 要申请的数量
+ * name: 设备名字
+ */
+int register_chrdev_region(dev_t from, unsigned count, const char *name)
+
+/* 
+ * 动态申请设备号
  * dev: 保存申请到的设备号
  * baseminor: 次设备号起始地址，此函数可以申请一段连续的多个次设备号，
  *            这些设备号的主设备号一样，但是次设备号不同，次设备号以
@@ -45,7 +56,9 @@ typedef __kernel_dev_t dev_t;
  */
 int alloc_chrdev_region(dev_t *dev, unsigned baseminor, 
         unsigned count, const char *name)
+
 /* 
+ * 上面两个函数申请的设备号都通过此函数注销。
  * from: 要释放的设备号。
  * count: 表示从 from 开始，要释放的设备号的数量。
  */
@@ -167,6 +180,12 @@ static void __exit xxx_exit(void)
 module_init(xxx_init);
 module_exit(xxx_exit);
 ```
+&emsp;&emsp;驱动加载成功以后需要在 /dev 下面创建一个与之对应的设备节点文件，应用程序通过此设备节点来操作具体的设备。
+```shell
+mknod /dev/chrdevbase c 200 0
+```
+&emsp;&emsp;然后操作此文件即可。
+&emsp;&emsp;即，通过`module_init`，`module_exit`指定驱动出口入口函数，通过`register_chrdev`，`unregister_chrdev`注册注销字符设备，使用`insmode`，`rmmode`加载卸载驱动，通过`mknod`创建设备节点。
 
 ### 40.4 
 #### 40.4.3 编译驱动程序和测试APP
@@ -187,14 +206,281 @@ clean:
 ```Makefile
 arm-linux-gnueabihf-gcc chrdevbaseApp.c -o chrdevbaseApp
 ```
-#### 40.4.4 运行测试
-&emsp;&emsp;驱动加载成功以后需要在 /dev 下面创建一个与之对应的设备节点文件，应用程序通过此设备节点来操作具体的设备。
-```shell
-mknod /dev/chrdevbase c 200 0
-```
-&emsp;&emsp;然后操作此文件即可。
 
-## 第四十一章 嵌入式 Linux LED 驱动开发实验
+## 第四十一章 （物理地址和虚拟地址映射函数）
+&emsp;&emsp;物理地址和虚拟地址映射函数：`ioremap`和`iounmap`。
+```c
+/* 
+ * cookie: 要映射的物理起始地址 
+ * size: 要映射的内存空间大小
+ * 返回值：__iomem 类型的指针，指向映射后的虚拟空间首地址
+ */
+ioremap(cookie,size)
+
+/* 
+ * addr: 要取消映射的虚拟地址空间首地址
+ */
+void iounmap (volatile void __iomem *addr)
+
+//示例
+#define SW_MUX_GPIO1_IO03_BASE (0X020E0068)
+static void __iomem* SW_MUX_GPIO1_IO03;
+SW_MUX_GPIO1_IO03 = ioremap(SW_MUX_GPIO1_IO03_BASE, 4);
+
+iounmap(SW_MUX_GPIO1_IO03);
+```
+
+&emsp;&emsp;I/O内存访问函数，读操作函数和写操作函数，分别是 8 位，16 位，32 位：
+```c
+u8 readb(const volatile void __iomem *addr)
+u16 readw(const volatile void __iomem *addr)
+u32 readl(const volatile void __iomem *addr)
+void writeb(u8 value, volatile void __iomem *addr)
+void writew(u16 value, volatile void __iomem *addr)
+void writel(u32 value, volatile void __iomem *addr)
+```
+
+## 第四十二章 新字符设备驱动实验
+&emsp;&emsp;第四十章使用的函数`register_chrdev`会将一个主设备号下的所有次设备号都使用掉，新的字符设备驱动已经不再使用这两个函数。
+### 42.1 新字符设备驱动原理
+#### 42.1.1 分配和释放设备号
+&emsp;&emsp;参见驱动相关知识总结，设备号一节。
+#### 42.1.2 新的字符设备注册方法
+&emsp;&emsp;使用一个结构体`cdev`来抽象表示一个字符设备，其定义如下：
+```c
+struct cdev {
+    struct kobject kobj;
+    struct module *owner;
+    const struct file_operations *ops;
+    struct list_head list;
+    dev_t dev;
+    unsigned int count;
+};
+```
+&emsp;&emsp;成员变量`ops`时字符设备文件操作集合，`dev_t`是设备号，`owner`通常是`THIS_MODULE`。需要使用此结构体定义的变量来注册其代表的字符设备。注册注销函数流程如下：
+```c
+struct cdev testcdev;
+
+/* 设备操作函数 */
+static struct file_operations test_fops = {
+    .owner = THIS_MODULE,
+    /* 其他具体的初始项 */
+};
+
+testcdev.owner = THIS_MODULE;
+cdev_init(&testcdev, &test_fops); /* 初始化 cdev 结构体变量 */
+cdev_add(&testcdev, devid, 1); /* 添加字符设备 */
+
+cdev_del(&testcdev); /* 删除 cdev */
+```
+&emsp;&emsp;各函数定义如下：
+```c
+/* 
+ * cdev: 要注册的字符设备
+ * fops: 对应的操作函数集合
+ */
+void cdev_init(struct cdev *cdev, const struct file_operations *fops)
+
+/* 
+ * cdev: 要添加的字符设备
+ * dev: 要添加的设备的起始设备号
+ * count: 此设备对应的连续的次设备号的数量
+ */
+int cdev_add(struct cdev *p, dev_t dev, unsigned count)
+
+/* 
+ * p: 要删除的字符设备
+ */
+void cdev_del(struct cdev *p)
+```
+### 42.2 自动创建设备节点
+&emsp;&emsp;在驱动中实现自动创建设备节点的功能以后，使用 modprobe 加载驱动模块成功的话就会自动在 /dev 目录下创建对应的设备文件。
+&emsp;&emsp;自动创建设备节点，需要在驱动入口函数中先创建一个类，再在这个类下创建一个设备。卸载驱动的时候需要删除掉创建的设备，先删除掉设备，再删除对应的类。流程如下：
+```c
+struct class *class; /* 类 */
+struct device *device; /* 设备 */
+dev_t devid; /* 设备号 */
+
+/* 驱动入口函数 */
+static int __init xxx_init(void)
+{
+    /* 创建类 */
+    class = class_create(THIS_MODULE, "xxx");
+    /* 创建设备 */
+    device = device_create(class, NULL, devid, NULL, "xxx");
+    return 0;
+}
+
+/* 驱动出口函数 */
+static void __exit led_exit(void)
+{
+    /* 删除设备 */
+    device_destroy(newchrled.class, newchrled.devid);
+    /* 删除类 */
+    class_destroy(newchrled.class);
+}
+
+module_init(led_init);
+module_exit(led_exit);
+```
+&emsp;&emsp;各函数原型如下：
+```c
+/* 
+ * class_create是一个宏，展开后如下所示
+ * owner: 一般为 THIS_MODULE
+ * name: 类名字
+ * 返回值：指向结构体 class 的指针，也就是创建的类
+ */
+struct class *class_create (struct module *owner, const char *name)
+
+/* 
+ * cls: 要删除的类
+ */
+void class_destroy(struct class *cls);
+
+/* 
+ * class: 要创建在哪个类下面
+ * parent: 父设备，如果没有，设为 NULL
+ * devt: 设备号
+ * drvdata: 设备可能会使用的私有数据，如果没有，设为 NULL
+ * fmt: 设备名字
+ * 返回值：创建好的设备
+ */
+struct device *device_create(struct class *class,
+                             struct device *parent,
+                             dev_t devt,
+                             void *drvdata,
+                             const char *fmt, ...)
+
+/* 
+ * class: 要删除的设备所处的类
+ * devt: 要删除的设备号
+ */
+void device_destroy(struct class *class, dev_t devt)
+```
+### 42.4 总结
+&emsp;&emsp;总的来说，新的字符设备注册以及自动创建设备节点示例如下：
+```c
+/* newchrled 设备结构体 */
+struct newchrled_dev{
+    dev_t devid; /* 设备号 */
+    struct cdev cdev; /* cdev */
+    struct class *class; /* 类 */
+    struct device *device; /* 设备 */
+};
+
+struct newchrled_dev newchrled; /* led 设备 */
+
+/* 设备操作函数 */
+static struct file_operations newchrled_fops = {
+    .owner = THIS_MODULE,
+    .open = led_open,
+    .read = led_read,
+    .write = led_write,
+    .release = led_release,
+};
+
+static int __init led_init(void)
+{
+    /* 对硬件设备的初始化配置 */
+
+    /* 注册字符设备驱动，下面两个函数根据需要选择 */
+    /* 1、设备号 */
+    register_chrdev_region(newchrled.devid, NEWCHRLED_CNT,
+        NEWCHRLED_NAME);
+    alloc_chrdev_region(&newchrled.devid, 0, NEWCHRLED_CNT,
+        NEWCHRLED_NAME); 
+
+    /* 2、初始化抽象设备的结构体 cdev */
+    newchrled.cdev.owner = THIS_MODULE;
+    cdev_init(&newchrled.cdev, &newchrled_fops);
+
+    /* 3、添加一个 cdev */
+    cdev_add(&newchrled.cdev, newchrled.devid, NEWCHRLED_CNT);
+
+    /* 上面已经完成了字符设备的注册，下面是自动创建设备节点 */
+    /* 1、创建类 */
+    newchrled.class = class_create(THIS_MODULE, NEWCHRLED_NAME);
+
+    /* 2、创建设备 */
+    newchrled.device = device_create(newchrled.class, NULL,
+        newchrled.devid, NULL, NEWCHRLED_NAME);
+}
+
+static void __exit led_exit(void)
+{
+    /* 对硬件设备的操作 */
+
+    /* 注销字符设备 */
+    cdev_del(&newchrled.cdev);/* 删除 cdev */
+    unregister_chrdev_region(newchrled.devid, NEWCHRLED_CNT);
+
+    device_destroy(newchrled.class, newchrled.devid);
+    class_destroy(newchrled.class);
+}
+
+module_init(led_init);
+module_exit(led_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("zuozhongkai");
+```
+
+## 第四十三章 设备树
+### 43.2 DTS、DTB 和 DTC
+&emsp;&emsp;要编译 DTS 文件的话只需要进入到 Linux 源码根目录下，然后执行 `make dtbs` 即可。
+&emsp;&emsp;在`arch/arm/boot/dts/Makefile`中（对于arm来说，是在arm架构下，别的架构去对应的路径下找即可，例如`arch/riscv/boot/dts/Makefile`）有如下内容：
+```c
+dtb-$(CONFIG_SOC_IMX6UL) += \
+    imx6ul-14x14-ddr3-arm2.dtb \
+......
+dtb-$(CONFIG_SOC_IMX6ULL) += \
+......
+    imx6ull-14x14-evk-usb-certi.dtb \
+    imx6ull-alientek-emmc.dtb \
+    imx6ull-alientek-nand.dtb \
+......
+dtb-$(CONFIG_SOC_IMX6SLL) += \
+    imx6sll-lpddr2-arm2.dtb \
+```
+&emsp;&emsp;当选中 I.MX6ULL 这个SOC以后（CONFIG_SOC_IMX6ULL=y），所有使用到 I.MX6ULL 这个 SOC 的板子对应的 .dts 文件都会被编译为 .dtb 如果我们使用 I.MX6ULL 新做了一个板子，只需要新建一个此板子对应的 .dts 文件，然后将对应的 .dtb 文件名添加到 dtb-$(CONFIG_SOC_IMX6ULL)下，这样在编译设备树的时候就会将对应的 .dts 编译为二进制的 .dtb 文件。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
