@@ -444,9 +444,104 @@ dtb-$(CONFIG_SOC_IMX6SLL) += \
 ```
 &emsp;&emsp;当选中 I.MX6ULL 这个SOC以后（CONFIG_SOC_IMX6ULL=y），所有使用到 I.MX6ULL 这个 SOC 的板子对应的 .dts 文件都会被编译为 .dtb 如果我们使用 I.MX6ULL 新做了一个板子，只需要新建一个此板子对应的 .dts 文件，然后将对应的 .dtb 文件名添加到 dtb-$(CONFIG_SOC_IMX6ULL)下，这样在编译设备树的时候就会将对应的 .dts 编译为二进制的 .dtb 文件。
 
+### 43.5 设备树在系统中的体现
+&emsp;&emsp;Linux 内核启动的时候会解析设备树中各个节点的信息，并且在根文件系统的`/proc/device-tree`目录下根据节点名字创建不同的文件夹。其目录结构和设备树是一致的。
+### 43.9 设备树常用 OF 操作函数
+&emsp;&emsp;Linux 内核提供了一系列函数来获取设备树中的节点和节点中的属性信息。这一系列函数都有一个统一的前缀“of_”，这些函数原型定义在`include/linux/of.h`文件中。
+#### 43.9.1 查找节点的 OF 函数
+&emsp;&emsp;设备都是以节点的形式“挂”到设备树上的，因此要想获取这个设备的其他属性信息，必须先获取到这个设备节点。Linux 内核使用`device_node`来抽象一个节点，定义如下：
+```c
+struct device_node {
+    const char *name; /* 节点名字 */
+    const char *type; /* 设备类型 */
+    phandle phandle;
+    const char *full_name; /* 节点全名 */
+    struct fwnode_handle fwnode;
 
+    struct property *properties; /* 属性 */
+    struct property *deadprops; /* removed 属性 */
+    struct device_node *parent; /* 父节点 */
+    struct device_node *child; /* 子节点 */
+    struct device_node *sibling;
+    struct kobject kobj;
+    unsigned long _flags;
+    void *data;
+#if defined(CONFIG_SPARC)
+    const char *path_component_name;
+    unsigned int unique_id;
+    struct of_irq_controller *irq_trans;
+#endif
+};
+```
+&emsp;&emsp;查找节点的 OF 函数共有 5 个：
+```c
+/* 
+ * from: 开始查找的节点，如果为 NULL 表示从根节点开始查找整个设备树
+ * name: 要查找的节点名字
+ * 返回值：找到的节点，如果为 NULL 表示查找失败
+ */
+struct device_node *of_find_node_by_name(struct device_node *from,
+                const char *name);
 
+/* 
+ * from: 开始查找的节点，如果为 NULL 表示从根节点开始查找整个设备树
+ * type: 要查找的节点对应的 type 字符串，也就是 device_type 属性值
+ */
+struct device_node *of_find_node_by_type(struct device_node *from,
+                const char *type)
 
+/* 
+ * type: 可以为 NULL，表示忽略掉 device_type 属性
+ * compatible：要查找的节点所对应的 compatible 属性列表
+ */
+struct device_node *of_find_compatible_node(struct device_node *from,
+                const char *type,
+                const char *compatible)
+
+/* 
+ * matches：of_device_id 匹配表，也就是在此匹配表里面查找节点。
+ * match：找到的匹配的 of_device_id。
+ */
+struct device_node *of_find_matching_node_and_match(struct device_node *from,
+                const struct of_device_id *matches,
+                const struct of_device_id **match)
+
+/* 
+ * path：带有全路径的节点名，可以使用节点的别名，
+ * 比如“/backlight”就是 backlight 这个节点的全路径。
+ */
+inline struct device_node *of_find_node_by_path(const char *path)
+```
+&emsp;&emsp;查找父节点或子节点的 OF 函数
+```c
+/* 
+ * node：要查找的父节点的节点
+ * 返回值：找到的父节点
+ */
+struct device_node *of_get_parent(const struct device_node *node)
+
+/* 
+ * node：父节点
+ * prev：前一个子节点，也就是从哪一个子节点开始迭代的查找下一个子节点。
+ *       可以设置为 NULL，表示从第一个子节点开始。
+ * 返回值：找到的父节点
+ */
+struct device_node *of_get_next_child(const struct device_node *node,
+                            struct device_node *prev)
+```
+#### 43.9.3 查找属性值的 OF 函数
+&emsp;&emsp;Linux 内核使用结构体 property 抽象属性，定义如下：
+```c
+struct property {
+    char *name; /* 属性名字 */
+    int length; /* 属性长度 */
+    void *value; /* 属性值 */
+    struct property *next; /* 下一个属性 */
+    unsigned long _flags;
+    unsigned int unique_id;
+    struct bin_attribute attr;
+};
+```
 
 
 
