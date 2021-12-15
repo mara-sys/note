@@ -542,8 +542,15 @@ struct property {
     struct bin_attribute attr;
 };
 ```
-
-
+&emsp;&emsp;让我们来看看从驱动程序代码启用这个时钟： 
+```c
+	clk_enable(clk);
+		clk->ops->enable(clk->hw);
+		[resolves to...]
+			clk_gate_enable(hw);
+			[resolves struct clk gate with to_clk_gate(hw)]
+				clk_gate_set_bit(gate);
+```
 
 
 
