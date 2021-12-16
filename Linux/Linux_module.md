@@ -51,6 +51,13 @@
     - [10.3.6 Helpers](#1036-helpers)
 - [十一、 用户空间函数的使用](#十一-用户空间函数的使用)
   - [poll函数](#poll函数)
+- [十二、clock framework](#十二clock-framework)
+  - [12.1 内核文档](#121-内核文档)
+    - [12.1.1 clock-bindings.txt](#1211-clock-bindingstxt)
+      - [12.1.1.1 clock providers](#12111-clock-providers)
+      - [12.1.1.2 clock consumers](#12112-clock-consumers)
+      - [12.1.1.3 示例](#12113-示例)
+      - [12.1.1.4 Assigned clock parents and rates](#12114-assigned-clock-parents-and-rates)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -1024,3 +1031,143 @@ for(;;){
 } 
 ```
 
+# 十二、clock framework
+## 12.1 内核文档
+### 12.1.1 clock-bindings.txt
+&emsp;&emsp;时钟信号源可以由设备树中的任何节点表示。这些节点被设计为 clock providers。clock consumer 节点使用<u>句柄和 clock specifier 对</u>来连接 clock provider 的输出和时钟输入。和 gpio specifier 类似，clock specifier 是一个由零个，一个或多个 cells 组成的数组，用于标识设备上的时钟输出。clock specifier 的长度由 clock provider 节点上的 #clcok-cells 属性定义。
+#### 12.1.1.1 clock providers
+* 必须的属性：#clock-cells
+一个 clock specifier 的 cells 的数量。0：节点有单个时钟输出；1：节点有多个时钟输出。
+* 可选的属性
+  *  clock-output-names：推荐是由字符串组成的时钟输出信号的名字，该属性是 clock specifier 索引的第一个 cell。然而，clock-output-names 是特定于 clock provider 的域，并且只用于鼓励对大多数 clock providers 使用相同的含义。此格式对于使用复杂的 clock specifier 格式的 clock providers 可能不能正常工作。在这些情况下，建议忽略此属性而创建一个绑定了特定名称的属性。
+  clock consumers 节点绝不能直接引用 provider 的 clock-output-names 属性。
+  示例：
+  ```c
+    oscillator {
+        #clock-cells = <1>;
+        clock-output-names = "ckil", "ckih";
+    };
+  ```
+  此节点定义了一个有两个时钟输出的设备，第一个名为“ckil”，第二个名为“ckih”。consumers 节点总是以 index 来引用时钟。名字应该反映出设备时钟输出信号的特点。
+
+  * clock-indices：如果节点中时钟的标识号不是从零开始线性定义的，此属性允许将 identifiers 和 clock-output-names 数组进行映射。
+  示例，如果我们有两个时钟<&oscillator 1> 和 <&oscillator 3>：
+  ```c
+	oscillator {
+		compatible = "myclocktype";
+		#clock-cells = <1>;
+		clock-indices = <1>, <3>;
+		clock-output-names = "clka", "clkb";
+	}
+  ```
+  这确保我们在 clock-output-names 属性中没有任何空字符串。
+#### 12.1.1.2 clock consumers
+* 必须的属性：clocks
+  <u>phandle 和 clock specifier 对</u>的表，设备的每个时钟输入都表示为一对。注意：如果 clock provider 的 #clock-cells 属性是“0”，那么将只有 phandle 出现在对中。
+  示例:
+  ```c
+    /* imx6ull */
+    clks: ccm@020c4000 {
+        compatible = "fsl,imx6ul-ccm";
+        reg = <0x020c4000 0x4000>;
+        interrupts = <GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>,
+                    <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>;
+        #clock-cells = <1>;
+        clocks = <&ckil>, <&osc>, <&ipp_di0>, <&ipp_di1>;
+        clock-names = "ckil", "osc", "ipp_di0", "ipp_di1";
+    };
+
+    cpu0: cpu@0 {
+        compatible = "arm,cortex-a7";
+
+        clocks = <&clks IMX6UL_CLK_ARM>,
+                <&clks IMX6UL_CLK_PLL2_BUS>,
+                <&clks IMX6UL_CLK_PLL2_PFD2>,
+                <&clks IMX6UL_CA7_SECONDARY_SEL>,
+                <&clks IMX6UL_CLK_STEP>,
+                <&clks IMX6UL_CLK_PLL1_SW>,
+                <&clks IMX6UL_CLK_PLL1_SYS>,
+                <&clks IMX6UL_PLL1_BYPASS>,
+                <&clks IMX6UL_CLK_PLL1>,
+                <&clks IMX6UL_PLL1_BYPASS_SRC>,
+                <&clks IMX6UL_CLK_OSC>;
+        clock-names = "arm", "pll2_bus",  "pll2_pfd2_396m", "secondary_sel", "step",
+                    "pll1_sw", "pll1_sys", "pll1_bypass", "pll1", "pll1_bypass_src", "osc";
+    };
+
+    /* canaan */
+    pll0: pll0 {
+        #clock-cells = <0>; /* only one output */
+        ......
+    };
+    pll0_div2: pll0_div2 {
+        ......
+        clocks = <&pll0>;
+    };
+  ```
+* 可选属性
+  * clock-names：设备时钟输入名称列表，每个名称都是一个字符串，其顺序与 clocks 属性中的顺序相同。consumers 驱动会使用 clock-names 来将 clocks specifiers 与时钟输入名称匹配。
+  * clock-ranges：空属性表示子节点可以从该节点继承命名时钟。 用于总线节点为其子节点提供时钟。 
+  示例:
+  ```c
+    device {
+        clocks = <&osc 1>, <&ref 0>;
+        clock-names = "baud", "register";
+    };
+  ```
+  这表明 device 设备有两个时钟输入，叫“baud”和“register”。baud 时钟与 &osc 第一路输出关联，register 时钟与 &ref 第零路输出关联。
+#### 12.1.1.3 示例
+```c
+    /* 外部晶振 */
+    osc: oscillator {
+        compatible = "fixed-clock";
+        #clock-cells = <1>;
+        clock-frequency  = <32678>;
+        clock-output-names = "osc";
+    };
+
+    /* phase-locked-loop device, 通过外部晶振产生高频时钟 */
+    pll: pll@4c000 {
+        compatible = "vendor,some-pll-interface"
+        #clock-cells = <1>;
+        clocks = <&osc 0>;
+        clock-names = "ref";
+        reg = <0x4c000 0x1000>;
+        clock-output-names = "pll", "pll-switched";
+    };
+
+    /* UART, using the low frequency oscillator for the baud clock,
+     * and the high frequency switched PLL output for register
+     * clocking */
+    uart@a000 {
+        compatible = "fsl,imx-uart";
+        reg = <0xa000 0x1000>;
+        interrupts = <33>;
+        clocks = <&osc 0>, <&pll 1>;
+        clock-names = "baud", "register";
+    };
+```
+&emsp;&emsp;这个设备树片段定义了三个设备：一个提供低频参考时钟的外部振荡器、一个生成更高频率时钟信号的 PLL 设备和一个 UART。 
+* 外部晶振频率固定，并且提供了一个时钟输出，名字是“osc”。
+* PLL 即是 clock provider 也是 clock consumer。它使用外部晶振产生时钟信号，并且提供两路输出。
+* uart 有两路输入：外部晶振与 baud 关联，register 与 pll-switched 关联。
+#### 12.1.1.4 Assigned clock parents and rates
+&emsp;&emsp;一些平台可能需要初始化 parent clocks 和时钟频率的默认配置。这样的配置可以通过指定设备树节点的 assigned-clocks, assigned-clock-parents 和 assigned-clock-rates 属性来实现。assigned-clock-parents 属性应该包含父时钟列表，列表形式是 phandle 和 clock specifier 对，the assigned-clock-parents
+property the list of assigned clock frequency values - corresponding to clocks listed in the assigned-clocks property.
+&emsp;&emsp;要跳过设置时钟的父级或速率，其相应的条目应设置为 0，如果后面没有任何非零条目，则可以省略。 
+```c
+uart@a000 {
+    compatible = "fsl,imx-uart";
+    reg = <0xa000 0x1000>;
+    ...
+    clocks = <&osc 0>, <&pll 1>;
+    clock-names = "baud", "register";
+
+    assigned-clocks = <&clkcon 0>, <&pll 2>;
+    assigned-clock-parents = <&pll 2>;
+    assigned-clock-rates = <0>, <460800>;
+};
+```
+&emsp;&emsp;此例中，时钟 <&pll 2> 被设为时钟 <&clkcon 0>的父级，且 <&pll 2> 的频率被设为 460800 Hz。
+&emsp;&emsp;通过时钟的设备节点配置时钟的父级和速率只能针对具有单个用户的时钟完成。禁止在多个 consumer 节点中为共享时钟指定冲突的父节点或速率配置。 
+&emsp;&emsp;对于影响了多个 consumer 设备的共用时钟，可以在时钟 provider 节点中指定。
