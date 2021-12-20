@@ -1281,13 +1281,11 @@ static void client_demo(struct platform_device *pdev)
 }
 ```
 ### 13.1.2 mailbox.txt(bindings)
-通用 mailbox controller 和 client 驱动的绑定 
-Generic binding to provide a way for Mailbox controller drivers to
-assign appropriate mailbox channel to client drivers.
+通用 mailbox controller 和 client 驱动的绑定
 通用绑定为 mailobx 驱动程序提供了一种将 mailbox channel 分配给客户端驱动的合适的方法。 
 1. Mailbox Controller
 必须的属性:
-* #mbox-cells: 必须至少为1. Number of cells in a mailbox specifier.
+   * #mbox-cells: 必须至少为1. Number of cells in a mailbox specifier.
 示例:
 ```c
 	mailbox: mailbox {
@@ -1297,11 +1295,11 @@ assign appropriate mailbox channel to client drivers.
 ```
 
 2. Mailbox Client
-必须的属性:
-* mboxes: List of phandle and mailbox channel specifiers.
-可选的属性:
-* mbox-names: List of identifier strings for each mailbox channel.
-* shmem : 共享内存区域的（SHM）phandle 列表，此共享内存区域是为了 mailboxs 使用者进程间通信使用的，每个 mailbox 一个。该共享内存可以是为 mailbox client 和 remote 之间的通信而保留的任何内存的一部分。 
+* 必须的属性:
+   * mboxes: List of phandle and mailbox channel specifiers.
+* 可选的属性:
+   * mbox-names: List of identifier strings for each mailbox channel.
+   * shmem : 共享内存区域的（SHM）phandle 列表，此共享内存区域是为了 mailboxs 使用者进程间通信使用的，每个 mailbox 一个。该共享内存可以是为 mailbox client 和 remote 之间的通信而保留的任何内存的一部分。 
 示例:
 ```c
 	pwr_cntrl: power {
