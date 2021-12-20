@@ -27,6 +27,8 @@
   - [8.4 ioctl的cmd——_IO](#84-ioctl的cmd_io)
     - [8.4.1 示例](#841-示例)
     - [8.4.2 代码分析](#842-代码分析)
+  - [8.5 一些变量初始化的定义](#85-一些变量初始化的定义)
+    - [8.5.1 uninitialized_var](#851-uninitialized_var)
 - [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
   - [9.1 使用](#91-使用)
     - [9.1.1 数据结构](#911-数据结构)
@@ -58,6 +60,13 @@
       - [12.1.1.2 clock consumers](#12112-clock-consumers)
       - [12.1.1.3 示例](#12113-示例)
       - [12.1.1.4 Assigned clock parents and rates](#12114-assigned-clock-parents-and-rates)
+- [十三、mailbox 框架](#十三mailbox-框架)
+  - [13.1 内核文档](#131-内核文档)
+    - [13.1.1 mailbox.txt](#1311-mailboxtxt)
+      - [13.1.1.1 介绍](#13111-介绍)
+      - [13.1.1.2 Controller Driver (See include/linux/mailbox_controller.h)](#13112-controller-driver-see-includelinuxmailbox_controllerh)
+      - [13.1.1.2 Client Driver (See include/linux/mailbox_client.h)](#13112-client-driver-see-includelinuxmailbox_clienth)
+    - [13.1.2 mailbox.txt(bindings)](#1312-mailboxtxtbindings)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -548,6 +557,12 @@ case RTC_UIE_ON:
 #define _IOC_SIZE(nr)		(((nr) >> _IOC_SIZESHIFT) & _IOC_SIZEMASK)
 ```
 
+## 8.5 一些变量初始化的定义
+### 8.5.1 uninitialized_var
+&emsp;&emsp;在 kernel中有一些变量不想或者没有必要初始化，但是这样编译器会报警告，这样可以采用宏`uninitialized_var`来解决这个未初始化的警告，宏定义如下，可以看到是将自己赋值给自己，这样就消除了没有初始化的警告。
+```c
+#define uninitialized_var(x) x = x
+```
 
 
 # 九、 高精度定时器hrtimer的使用
@@ -1171,3 +1186,185 @@ uart@a000 {
 &emsp;&emsp;此例中，时钟 <&pll 2> 被设为时钟 <&clkcon 0>的父级，且 <&pll 2> 的频率被设为 460800 Hz。
 &emsp;&emsp;通过时钟的设备节点配置时钟的父级和速率只能针对具有单个用户的时钟完成。禁止在多个 consumer 节点中为共享时钟指定冲突的父节点或速率配置。 
 &emsp;&emsp;对于影响了多个 consumer 设备的共用时钟，可以在时钟 provider 节点中指定。
+
+# 十三、mailbox 框架
+## 13.1 内核文档
+### 13.1.1 mailbox.txt
+#### 13.1.1.1 介绍
+&emsp;&emsp;本文档旨在帮助开发人员编写客户端和控制器驱动程序的 API。 但在此之前，让我们注意客户端（尤其是）和控制器驱动程序可能会非常依赖于特定平台的，因为远程固件可能是专有的并实现了非标准协议。 因此，即使两个平台使用，例如，PL320 控制器，客户端驱动程序也不能在它们之间共享。 甚至 PL320 驱动程序也可能需要适应某些特定于平台的怪癖。 因此，API 主要是为了避免为每个平台编写类似的代码副本。 话虽如此，没有什么能阻止远程 f/w 也基于 Linux 并在那里使用相同的 api。 然而，这些都对我们本地没有帮助，因为我们只在客户端的协议级别进行交易。 
+&emsp;&emsp;在实施过程中做出的一些选择是这个“通用”框架的这种特殊性的结果。 
+#### 13.1.1.2 Controller Driver (See include/linux/mailbox_controller.h)
+分配 mbox_controller 和 mbox_chan 数组。 填充 mbox_chan_ops，除了 peek_data() 都是必需的。 控制器驱动程序可能会通过获取 IRQ 或轮询某些硬件标志来知道远程已消耗了一条消息，或者它永远不会知道（客户端通过协议知道）。 按优先顺序排列的方法是 IRQ -> Poll -> None，控制器驱动程序应通过 'txdone_irq' 或 'txdone_poll' 或 none 来设置。 
+#### 13.1.1.2 Client Driver (See include/linux/mailbox_client.h)
+&emsp;&emsp;客户端可能希望在阻塞模式（在返回之前同步发送消息）或非阻塞/异步模式（向 API 提交消息和回调函数并立即返回）下操作。 
+```c
+struct demo_client {
+    struct mbox_client cl;
+    struct mbox_chan *mbox;
+    struct completion c;
+    bool async;
+    /* ... */
+};
+
+/*
+* This is the handler for data received from remote. The behaviour is purely
+* dependent upon the protocol. This is just an example.
+*/
+static void message_from_remote(struct mbox_client *cl, void *mssg)
+{
+    struct demo_client *dc = container_of(cl, struct demo_client, cl);
+    if (dc->async) {
+        if (is_an_ack(mssg)) {
+            /* An ACK to our last sample sent */
+            return; /* Or do something else here */
+        } else { /* A new message from remote */
+            queue_req(mssg);
+        }
+    } else {
+        /* Remote f/w sends only ACK packets on this channel */
+        return;
+    }
+}
+
+static void sample_sent(struct mbox_client *cl, void *mssg, int r)
+{
+    struct demo_client *dc = container_of(cl, struct demo_client, cl);
+    complete(&dc->c);
+}
+
+static void client_demo(struct platform_device *pdev)
+{
+    struct demo_client *dc_sync, *dc_async;
+    /* The controller already knows async_pkt and sync_pkt */
+    struct async_pkt ap;
+    struct sync_pkt sp;
+
+    dc_sync = kzalloc(sizeof(*dc_sync), GFP_KERNEL);
+    dc_async = kzalloc(sizeof(*dc_async), GFP_KERNEL);
+
+    /* Populate non-blocking mode client */
+    dc_async->cl.dev = &pdev->dev;
+    dc_async->cl.rx_callback = message_from_remote;
+    dc_async->cl.tx_done = sample_sent;
+    dc_async->cl.tx_block = false;
+    dc_async->cl.tx_tout = 0; /* doesn't matter here */
+    dc_async->cl.knows_txdone = false; /* depending upon protocol */
+    dc_async->async = true;
+    init_completion(&dc_async->c);
+
+    /* Populate blocking mode client */
+    dc_sync->cl.dev = &pdev->dev;
+    dc_sync->cl.rx_callback = message_from_remote;
+    dc_sync->cl.tx_done = NULL; /* operate in blocking mode */
+    dc_sync->cl.tx_block = true;
+    dc_sync->cl.tx_tout = 500; /* by half a second */
+    dc_sync->cl.knows_txdone = false; /* depending upon protocol */
+    dc_sync->async = false;
+
+    /* ASync mailbox is listed second in 'mboxes' property */
+    dc_async->mbox = mbox_request_channel(&dc_async->cl, 1);
+    /* Populate data packet */
+    /* ap.xxx = 123; etc */
+    /* Send async message to remote */
+    mbox_send_message(dc_async->mbox, &ap);
+
+    /* Sync mailbox is listed first in 'mboxes' property */
+    dc_sync->mbox = mbox_request_channel(&dc_sync->cl, 0);
+    /* Populate data packet */
+    /* sp.abc = 123; etc */
+    /* Send message to remote in blocking mode */
+    mbox_send_message(dc_sync->mbox, &sp);
+    /* At this point 'sp' has been sent */
+
+    /* Now wait for async chan to be done */
+    wait_for_completion(&dc_async->c);
+}
+```
+### 13.1.2 mailbox.txt(bindings)
+通用 mailbox controller 和 client 驱动的绑定 
+Generic binding to provide a way for Mailbox controller drivers to
+assign appropriate mailbox channel to client drivers.
+通用绑定为 mailobx 驱动程序提供了一种将 mailbox channel 分配给客户端驱动的合适的方法。 
+1. Mailbox Controller
+必须的属性:
+* #mbox-cells: 必须至少为1. Number of cells in a mailbox specifier.
+示例:
+```c
+	mailbox: mailbox {
+		...
+		#mbox-cells = <1>;
+	};
+```
+
+2. Mailbox Client
+必须的属性:
+* mboxes: List of phandle and mailbox channel specifiers.
+可选的属性:
+* mbox-names: List of identifier strings for each mailbox channel.
+* shmem : 共享内存区域的（SHM）phandle 列表，此共享内存区域是为了 mailboxs 使用者进程间通信使用的，每个 mailbox 一个。该共享内存可以是为 mailbox client 和 remote 之间的通信而保留的任何内存的一部分。 
+示例:
+```c
+	pwr_cntrl: power {
+		...
+		mbox-names = "pwr-ctrl", "rpc";
+		mboxes = <&mailbox 0 &mailbox 1>;
+	};
+```
+&emsp;&emsp;带共享内存的示例(shmem):
+```c
+	sram: sram@50000000 {
+		compatible = "mmio-sram";
+		reg = <0x50000000 0x10000>;
+
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0 0x50000000 0x10000>;
+
+		cl_shmem: shmem@0 {
+			compatible = "client-shmem";
+			reg = <0x0 0x200>;
+		};
+	};
+
+	client@2e000000 {
+		...
+		mboxes = <&mailbox 0>;
+		shmem = <&cl_shmem>;
+		..
+	};
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
