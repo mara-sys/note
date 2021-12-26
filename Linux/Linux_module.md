@@ -71,6 +71,7 @@
   - [13.1 内核文档](#131-内核文档-1)
     - [13.1.1 debugfs.txt](#1311-debugfstxt)
   - [13.2 示例](#132-示例)
+          - [echo 刷屏的问题](#echo-刷屏的问题)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -1554,7 +1555,9 @@ static int __init led_init(void)
 ![debugfs创建根目录](./Linux_module_images/130201_create_root.png)  
 &emsp;&emsp;使用 echo 输入文件的是字符，因此在需要将字符转换为数字，使用标准接口则不存在这个问题，如下所示：
 ![使用debugfs](./Linux_module_images/130201_use_debugfs.png)
-&emsp;&emsp;还存在一个问题，就是没法使用文档中所说的删除目录的函数，使用以后并没有删除对应目录，而且继续读取相应文件会导致错误，问题待查
+&emsp;&emsp;还存在一个问题，就是没法使用文档中所说的删除目录的函数，使用以后并没有删除对应目录，而且继续读取相应文件会导致错误，问题待查。
+###### echo 刷屏的问题
+[echo 或 cat 文件打印信息刷屏的问题](https://www.cnblogs.com/pengdonglin137/p/8012793.html)
 
 
 
