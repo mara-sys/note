@@ -70,6 +70,7 @@
 - [十三、debugfs](#十三debugfs)
   - [13.1 内核文档](#131-内核文档-1)
     - [13.1.1 debugfs.txt](#1311-debugfstxt)
+  - [13.2 示例](#132-示例)
 
 # 一、reboot
 [参考的帖子链接](https://blog.csdn.net/renlonggg/article/details/78204305)
@@ -1488,8 +1489,72 @@ void debugfs_remove_recursive(struct dentry *dentry);
 &emsp;&emsp;如果将对应顶层目录的dentry传递给以上函数，则该目录下的整个层次结构将会被删除。
 
 
+## 13.2 示例
+```c
+...
+#include <linux/debugfs.h>
+
+...
+struct dentry *led_debugfs;
+int debugfs_int_variable = 369;
+unsigned char debugfs_u8_variable = 255;
+struct dentry *int_variable;
+struct dentry *u8_variable;
+struct dentry *x_u8_variable;
+...
+
+static ssize_t int_variable_read(struct file *filp, char __user *buf,
+                size_t cnt, loff_t *offt)
+{
+    printk("[%s,%d], int_variable: %d\n", __func__, __LINE__, debugfs_int_variable);
+    return 0;
+}
+
+static ssize_t int_variable_write(struct file *filp, const char __user *buf,
+                    size_t cnt, loff_t *offt)
+{
+    int ret;
+    char kernbuf[16], *end, *pbuf;
+
+    if(cnt > (sizeof(kernbuf) -1))
+        return -EINVAL;
+
+    if (copy_from_user(kernbuf, buf, cnt))
+        return -EFAULT;
+
+    kernbuf[cnt] = '\0';
+    pbuf = kernbuf;
+
+    debugfs_int_variable = simple_strtoull(pbuf, &end, 10);
+
+    printk("[%s,%d], debugfs_int_variable:%d\n", __func__, __LINE__, debugfs_int_variable);
+    return cnt;
+}
+
+static const struct file_operations debugfs_int_variable_ops = {
+    .read = int_variable_read,
+    .write = int_variable_write,
+};
 
 
+static int __init led_init(void)
+{
+    ...
+    struct dentry *led_debugfs;
+
+    ...
+    led_debugfs = debugfs_create_dir("gpioled", NULL);
+    int_variable = debugfs_create_file("int_variable", 0644, led_debugfs, 
+                        &debugfs_int_variable, &debugfs_int_variable_ops);
+    u8_variable = debugfs_create_u8("u8_variable", 0644, led_debugfs, &debugfs_u8_variable);
+    x_u8_variable = debugfs_create_x8("x_u8_variable", 0644, led_debugfs, &debugfs_u8_variable);
+}
+```
+&emsp;&emsp;上面的工作在模块加载以后，再加载 debugfs 即可在目录下面看到`gpioled`的目录，如下图所示：
+![debugfs创建根目录](./Linux_module_images/130201_create_root.png)  
+&emsp;&emsp;使用 echo 输入文件的是字符，因此在需要将字符转换为数字，使用标准接口则不存在这个问题，如下所示：
+![使用debugfs](./Linux_module_images/130201_use_debugfs.png)
+&emsp;&emsp;还存在一个问题，就是没法使用文档中所说的删除目录的函数，使用以后并没有删除对应目录，而且继续读取相应文件会导致错误，问题待查
 
 
 
