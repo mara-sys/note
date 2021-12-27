@@ -552,37 +552,188 @@ struct property {
 				clk_gate_set_bit(gate);
 ```
 
+## 第四十七章 Linux 并发与竞争
+### 47.1 并发与竞争
+&emsp;&emsp;保护内容是什么：一般像全局变量，设备结构体这些肯定是要保护的，至于其他的数据就要根据实际的驱动程序而定了。
+### 47.2 原子操作
+&emsp;&emsp;一般原子操作用于**变量**或者**位**操作。
+&emsp;&emsp;Linux内核提供了两组原子操作API函数，一组是对整形变量进行操作的，一组是对位进行操作的。
+#### 47.2.2 原子整型操作 API 函数
+&emsp;&emsp;Linux内核定义了叫做atomic_t的结构体来完成整形数据的原子操作，在使用中用原子变量来代替整形变量，此结构体定义在include/linux/types.h文件中，定义如下：
+```c
+typedef struct {
+    int counter;
+} atomic_t;
+```
+&emsp;&emsp;如果要使用原子操作API函数，首先要定义一个stomic_t变量，如下所示：
+```c
+atomic_t a; //定义 a
+```
+&emsp;&emsp;也可以在定义原子变量的时候给原子变量赋初值，如下所示：
+```c
+atomic_t b = ATOMIC_INIT(0); //定义原子变量b并赋初值为0
+```
+&emsp;&emsp;可以通过宏ATOMIC_INIT向原子变量赋初值。
+&emsp;&emsp;原子变量有了，接下来就是对原子变量进行操作，比如读、写、增加、减少等等， Linux 内核提供了大量的原子操作 API 函数，如表 47.2.2.1 所示：
 
+| 函数                                        | 描述                                         |
+| ------------------------------------------- | -------------------------------------------- |
+| ATOMIC_INIT(int i)                          | 定义原子变量的时候对其初始化。               |
+| int atomic_read(atomic_t *v)                | 读取 v 的值，并且返回。                      |
+| void atomic_set(atomic_t *v, int i)         | 向 v 写入 i 值。                             |
+| void atomic_add(int i, atomic_t *v)         | 给 v 加上 i 值。                             |
+| void atomic_sub(int i, atomic_t *v)         | 从 v 减去 i 值。                             |
+| void atomic_inc(atomic_t *v)                | 给 v 加 1，也就是自增。                      |
+| void atomic_dec(atomic_t *v)                | 从 v 减 1，也就是自减。                      |
+| int atomic_dec_return(atomic_t *v)          | 从 v 减 1，并且返回 v 的值。                 |
+| int atomic_inc_return(atomic_t *v)          | 给 v 加 1，并且返回 v 的值。                 |
+| int atomic_sub_and_test(int i, atomic_t *v) | 从 v 减 i，如果结果为 0 就返回真，否则返回假 |
+| int atomic_dec_and_test(atomic_t *v)        | 从 v 减 1，如果结果为 0 就返回真，否则返回假 |
+| int atomic_inc_and_test(atomic_t *v)        | 给 v 加 1，如果结果为 0 就返回真，否则返回假 |
+| int atomic_add_negative(int i, atomic_t *v) | 给 v 加 i，如果结果为负就返回真，否则返回假  |
+&emsp;&emsp;如果使用 64 位 SOC 的话，就要用到 64 位的原子变量，Linux内核也定义了 64 位原子结构体，如下所示：
+```c
+typedef struct {
+    long long counter;
+} atomic64_t;
+```
+&emsp;&emsp;相应的也提供了 64 位原子变量的操作 API 函数，只是将“atomic_”前缀换为“atomic64_”，将 int 换为 long long。
+#### 47.2.3 原子位操作 API 函数
+&emsp;&emsp;原子位操作是直接对内存进行操作。
 
+| 函数                                     | 描述                                              |
+| ---------------------------------------- | ------------------------------------------------- |
+| void set_bit(int nr, void *p)            | 将 p 地址的第 nr 位置 1。                         |
+| void clear_bit(int nr,void *p)           | 将 p 地址的第 nr 位清零。                         |
+| void change_bit(int nr, void *p)         | 将 p 地址的第 nr 位进行翻转。                     |
+| int test_bit(int nr, void *p)            | 获取 p 地址的第 nr 位的值。                       |
+| int test_and_set_bit(int nr, void *p)    | 将 p 地址的第 nr 位置 1，并且返回 nr 位原来的值。 |
+| int test_and_clear_bit(int nr, void *p)  | 将 p 地址的第 nr 位清零，并且返回 nr 位原来的值。 |
+| int test_and_change_bit(int nr, void *p) | 将 p 地址的第 nr 位翻转，并且返回 nr 位原来的值。 |
+### 47.3 自旋锁
+&emsp;&emsp;使用锁的目的：达到同步的作用，使共享资源在同一时间内，只能有一个进程或者线程对它进行操作。为了使锁能够正常工作，为了保护共享资源，我们只有在设计线程的时候，所有线程都用同一种方法去访问共享数据，也就是访问数据之前，务必先获取锁，然后再操作，操作完之后要解锁（unlock）。操作系统提供锁机制，就是提供了一种所有程序员都必须遵循的规范。而不是说我们锁住资源，其他线程访问共享资源的时候，让操作系统去为我们检查数据是否有其他的线程在操作。
+&emsp;&emsp;当一个线程要访问某个共享资源的时候首先要先获取相应的锁， 锁只能被一个线程持有，只要此线程不释放持有的锁，那么其他的线程就不能获取此锁。对于自旋锁而言，如果自旋锁正在被线程 A 持有，线程 B 想要获取自旋锁，那么线程 B 就会处于**忙循环-旋转-等待**状态，线程 B 不会进入休眠状态或者说去做其他的处理，而是会一直傻傻的在那里“转圈圈”的等待锁可用。
+&emsp;&emsp;自旋锁的“自旋”也就是“原地打转”的意思，“原地打转”的目的是为了等待自旋锁可以用，可以访问共享资源。把自旋锁比作一个变量 a，变量 a=1 的时候表示共享资源可用，当 a=0的时候表示共享资源不可用。现在线程 A 要访问共享资源，发现 a=0(自旋锁被其他线程持有)，那么线程 A 就会不断的查询 a 的值，直到 a=1。从这里我们可以看到自旋锁的一个缺点：<u>那就等待自旋锁的线程会一直处于自旋状态，这样会浪费处理器时间，降低系统性能，所以自旋锁的持有时间不能太长</u>。所以自旋锁适用于短时期的轻量级加锁，如果遇到需要长时间持有锁的场景那就需要换其他的方法了。
+&emsp;&emsp;Linux 内核使用结构体 spinlock_t 表示自旋锁，结构体定义如下所示：
+```c
+typedef struct spinlock {
+    union {
+        struct raw_spinlock rlock;
 
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+#define LOCK_PADSIZE (offsetof(struct raw_spinlock, dep_map))
+        struct {
+            u8 __padding[LOCK_PADSIZE];
+            struct lockdep_map dep_map;
+        };
+#endif
+    };
+} spinlock_t;
+```
+&emsp;&emsp;在使用自旋锁之前，首先要定义一个自旋锁变量。
+```c
+spinlock_t lock;
+```
+&emsp;&emsp;定义好自旋锁变量以后就可以使用相应的API函数来操作自旋锁。
+#### 47.3.2 自旋锁 API 函数
+&emsp;&emsp;最基本的自旋锁API函数如下表所示：
 
+| 函数                                 | 描述                                                         |
+| ------------------------------------ | ------------------------------------------------------------ |
+| DEFINE_SPINLOCK(spinlock_t lock)     | 定义并初始化一个自选变量。                                   |
+| int spin_lock_init(spinlock_t *lock) | 初始化自旋锁。                                               |
+| void spin_lock(spinlock_t *lock)     | 获取指定的自旋锁，也叫做加锁。                               |
+| void spin_unlock(spinlock_t *lock)   | 释放指定的自旋锁。                                           |
+| int spin_trylock(spinlock_t *lock)   | 尝试获取指定的自旋锁，如果没有获取到就返回 0                 |
+| int spin_is_locked(spinlock_t *lock) | 检查指定的自旋锁是否被获取，如果没有被获取就返回非0，否则返回0。 |
+&emsp;&emsp;表47.3.2.1中的自旋锁API函数适用于SMP或支持抢占的单CPU下线程之间的并发访问，也就是用于线程与线程之间，**被自旋锁保护的临界区一定不能调用任何能够引起睡眠和阻塞的API 函数，否则的话会可能会导致死锁现象的发生**。自旋锁会自动禁止抢占，也就说当线程 A得到锁以后会暂时禁止内核抢占。如果线程 A 在持有锁期间进入了休眠状态，那么线程 A 会自动放弃 CPU 使用权。线程 B 开始运行，线程 B 也想要获取锁，但是此时锁被 A 线程持有，而且内核抢占还被禁止了！线程 B 无法被调度出去，那么线程 A 就无法运行，锁也就无法释放，好了，死锁发生了！
+&emsp;&emsp;表 47.3.2.1 中的 API 函数用于线程之间的并发访问，如果此时中断也要插一脚，中断也想访问共享资源，那该怎么办呢？首先可以肯定的是，中断里面可以使用自旋锁，**但是在中断里面使用自旋锁的时候，在获取锁之前一定要先禁止本地中断(也就是本 CPU 中断，对于多核 SOC来说会有多个 CPU 核)**，否则可能导致锁死现象的发生。
+![中断打断线程](./I_MX6U嵌入式Linux驱动开发指南_images/470303_spinlock_interrupt.png)  
+&emsp;&emsp;在图 47.3.2.1 中，线程 A 先运行，并且获取到了 lock 这个锁，当线程 A 运行 functionA 函数的时候中断发生了，中断抢走了 CPU 使用权。右边的中断服务函数也要获取 lock 这个锁，但是这个锁被线程 A 占有着，中断就会一直自旋，等待锁有效。但是在中断服务函数执行完之前，线程A是不可能执行的，线程 A 说“你先放手”，中断说“你先放手”，场面就这么僵持着，死锁发生！
+&emsp;&emsp;最好的解决方法就是获取锁之前关闭本地中断， Linux 内核提供了相应的 API 函数。
 
+| 函数                                                         | 描述                                                       |
+| ------------------------------------------------------------ | ---------------------------------------------------------- |
+| void spin_lock_irq(spinlock_t *lock)                         | 禁止本地中断，并获取自旋锁。                               |
+| void spin_unlock_irq(spinlock_t *lock)                       | 激活本地中断，并释放自旋锁。                               |
+| void spin_lock_irqsave(spinlock_t *lock,unsigned long flags) | 保存中断状态，禁止本地中断，并获取自旋锁。                 |
+| void spin_unlock_irqrestore(spinlock_t *lock,unsigned long flags) | 将中断状态恢复到以前的状态，并且激活本地中断，释放自旋锁。 |
 
+#### 47.3.3 自旋锁使用注意事项
+1. 在等待自旋锁的时候处于自旋状态，因此锁的持有时间不能太长，否则的话会降低系统性能。如果临界区比较大，可以选择其他的并发处理方式，比如信号量和互斥体。
+2. 自旋锁保护的临界区内不能调用任何可能导致线程休眠的 API 函数，否则的话可能导致死锁。
+3. 不能递归申请自旋锁，因为一旦通过递归的方式申请一个你正在持有的锁，那么你就必须“自旋”，等待锁被释放，然而你正处于“自旋”状态，根本没法释放锁。结果就是自己导致死锁。
 
+### 47.4 信号量
+&emsp;&emsp;相比于自旋锁，信号量可以使线程进入休眠状态。信号量的特点如下：
+1. 因为信号量可以使等待资源线程进入休眠状态，因此是用于那些占用资源比较久的场合；
+2. 因此信号量不能用于中断中，因为信号量会引起休眠，中断不能休眠；
+3. 如果共享资源的持有时间比较短，那就不适合信号量了，因为频繁的休眠、切换线程引起的开销要远大于信号量带来的那点优势。
+&emsp;&emsp;相当于通过控制信号量控制访问资源的线程数，在初始化的时候将信号量值设置的大于 1，那么这个信号量就是计数型信号量，计数型信号量不能用于互斥访问，因为它允许多个线程同时访问共享资源。如果要互斥的访问共享资源那么信号量的值就不能大于 1，此使的信号量就是一个二值信号量。
+#### 47.4.2 信号量 API 函数
+&emsp;&emsp;Linux 内核使用 semaphore 结构体表示信号量，结构体内容如下所示：
+```c
+struct semaphore {
+    raw_spinlock_t lock;
+    unsigned int count;
+    struct list_head wait_list;
+};
+```
+&emsp;&emsp;有关信号量的 API 函数如下所示：
 
+| 函数                                           | 描述                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| DEFINE_SEAMPHORE(name)                         | 定义一个信号量，并且设置信号量的值为 1。                     |
+| void sema_init(struct semaphore *sem, int val) | 初始化信号量 sem，设置信号量值为 val。                       |
+| void down(struct semaphore *sem)               | 获取信号量，因为会导致休眠，因此不能在中断中使用             |
+| int down_trylock(struct semaphore *sem);       | 尝试获取信号量，如果能获取到信号量就获取，并返回0。如果不能就返回非0，并且不会进入休眠。 |
+| int down_interruptible(struct semaphore *sem)  | 获取信号量，和down类似，只是使用down进入休眠状态的线程不能被信号打断。而使用此函数进入休眠以后是可以被信号打断的。 |
+| void up(struct semaphore *sem)                 | 释放信号量。                                                 |
+&emsp;&emsp;信号量的使用如下：
+```c
+struct semaphore sem; /* 定义信号量 */
 
+sema_init(&sem, 1)； /* 初始化信号量 */
 
+down(&sem); /* 申请信号量 */
+/* 临界区 */
+up(&sem); /* 释放信号量 */
+```
+### 47.5 互斥体
+&emsp;&emsp;互斥访问表示一次只有一个线程可以访问共享资源，不能递归申请互斥体。Linux内核使用 mutex 结构体表示互斥体，定义如下：
+```c
+struct mutex {
+    /* 1: unlocked, 0: locked, negative: locked, possible waiters */
+    atomic_t count;
+    spinlock_t wait_lock;
+};
+```
+&emsp;&emsp;使用 mutex 之前要先定义一个 mutex 变量。在使用 mutex 的时候需要注意几点：
+1. mutex 可以导致休眠，因此不能再中断中使用 mutex，中断中只能使用自旋锁。
+2. 和信号量一样，mutex 保护的临界区可以调用引起阻塞的 API 函数。
+3. 因为一次只能由一个线程可以持有 mutex，因此，必须由 mutex 的持有者释放 mutex。并且 mutex 不能递归上锁和解锁。
+#### 47.5.2 互斥体 API 函数
 
+| 函数                                             | 描述                                                    |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| DEFINE_MUTEX(name)                               | 定义并初始化一个 mutex 变量。                           |
+| void mutex_init(mutex *lock)                     | 初始化 mutex。                                          |
+| void mutex_lock(struct mutex *lock)              | 获取 mutex，也就是给 mutex 上锁。如果获取不到就进休眠。 |
+| void mutex_unlock(struct mutex *lock)            | 释放 mutex，也就给 mutex 解锁。                         |
+| int mutex_trylock(struct mutex *lock)            | 尝试获取 mutex，如果成功就返回 1，如果失败就返回 0。    |
+| int mutex_is_locked(struct mutex *lock)          | 判断 mutex 是否被获取，如果是的话就返回 1，否则返回 0。 |
+| int mutex_lock_interruptible(struct mutex *lock) | 使用此函数获取信号量失败进入休眠以后可 以被信号打断。   |
+&emsp;&emsp;互斥体的使用如下：
+```c
+struct mutex lock; /* 定义一个互斥体 */
+mutex_init(&lock); /* 初始化互斥体 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+mutex_lock(&lock); /* 上锁 */
+/* 临界区 */
+mutex_unlock(&lock); /* 解锁 */
+```
+## 第四十八章 Linux 并发与竞争实验
+### 48.1 原子操作实验
 
 
 
