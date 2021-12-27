@@ -5,6 +5,11 @@
     - [1.2.1 实例](#121-实例)
     - [1.2.2 注册与注销函数](#122-注册与注销函数)
     - [1.3 通知链表](#13-通知链表)
+- [六、 /dev/mem](#六-devmem)
+  - [6.1 使用示例](#61-使用示例)
+  - [6.2](#62)
+    - [6.2.1 "dev/mem"设备](#621-devmem设备)
+    - [6.2.2 使用方法](#622-使用方法)
 - [八、 零散的宏定义](#八-零散的宏定义)
   - [8.1 DEVICE_ATTR](#81-device_attr)
     - [8.1.1 介绍](#811-介绍)
@@ -212,6 +217,66 @@ EXPORT_SYMBOL(unregister_restart_handler);
 ### 1.3 通知链表
 [参考链接](http://bbs.chinaunix.net/thread-2011776-1-1.html)
 
+# 六、 /dev/mem
+## 6.1 使用示例
+```c
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>      //open
+#include <stdio.h>
+#include <unistd.h>     //read, write
+#include <stdlib.h>     //exit
+#include <stdint.h>     //uint32_t
+#include <stdbool.h>
+#include <sys/mman.h>
+
+#define MMAP_SIZE           0X1000
+
+#define IOMUX_BASE_ADDR     0X020E0000
+#define MUX_GPIO1_IO03      0X68
+
+int main()
+{
+    int fd_mux;
+    uint32_t *mmap_mux_addr = NULL;
+    bool reserve_level = false;
+
+    fd_mux = open("/dev/mem", O_RDWR | O_NDELAY);      （1）
+    if(fd_mux < 0)
+    {
+        perror("/dev/mem");
+        exit(-1);   
+    }
+
+    mmap_mux_addr = (uint32_t *)mmap(NULL, MMAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd_mux, IOMUX_BASE_ADDR);       （2）
+    if(mmap_mux_addr == NULL)
+    {
+        perror("mmap_mux_addr or mmap_gpio_addr");
+        exit(-1);
+    }
+
+    *(mmap_mux_addr + MUX_GPIO1_IO03/4) = 0X05;              （3）
+
+    munmap(mmap_mux_addr, MMAP_SIZE);
+
+    return 0;
+}
+```
+## 6.2 
+### 6.2.1 "dev/mem"设备
+&emsp;&emsp;“/dev/mem”是 Linux 系统的一个虚拟字符设备，无论是标准的 Linux 系统还是嵌入式 Linux 系统，都支持该设备。
+&emsp;&emsp;“/dev/mem”设备是内核所有物理地址空间的全映像，这些地址包括：
+* 物理内存（RAM）空间
+* 物理存储（ROM）空间
+* cpu 总线地址
+* cpu 寄存器地址
+* 外设寄存器地址、GPIO、定时器、ADC
+
+&emsp;&emsp;“/dev/mem”设备通常与“mmap”结合使用，将该设备的物理内存映射到用户态，这样用户空间可以直接访问内存态
+&emsp;&emsp;因为涉及访问内核空间，因此只有**root 用户才有访问“/dev/mem”设备的权限。**
+### 6.2.2 使用方法
+1. open 一个“/dev/mem”文件描述符，访问权限可以为只读（O_RDONLY ）、只写（O_WRONLY ）、读写（O_RDWR ）的阻塞或者非阻塞方式。
+2. 通过 mmap 把需要访问的目标物理地址与“/dev/mem”文件描述符建立映射。
 
 # 八、 零散的宏定义
 ## 8.1 DEVICE_ATTR
