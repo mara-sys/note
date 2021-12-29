@@ -739,5 +739,9 @@ mutex_unlock(&lock); /* 解锁 */
 
 ## 第五十一章 Linux中断实验
 
+## 第五十二章 Linux 阻塞和非阻塞 IO 实验
+### 52.1 阻塞和非阻塞 IO
+#### 52.1.1 阻塞和非阻塞简介
+&emsp;&emsp;这
 
 ## 第五十八章 Linux INPUT子系统实验
