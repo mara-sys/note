@@ -1422,7 +1422,29 @@ static void client_demo(struct platform_device *pdev)
 ## 13.2 代码分析
 ### 13.2.1 mailbox_controller.h
 &emsp;&emsp;定义了`mbox_controller`（对 mailbox 硬件的抽象）、`mbox_chan`（对 channel 的抽象）`mbox_chan_ops`（操作 channel 的回调函数的集合）。
-
+```c
+struct mbox_controller {
+    /* 此 controller 对应的设备，在 probe 时赋值，dev = &pdev->dev */
+	struct device *dev;                  
+	const struct mbox_chan_ops *ops;    // 对 channel 进行操作的函数集合
+	struct mbox_chan *chans;            // channel 的指针数组，channel 的集合
+	int num_chans;                      // 支持的 channel 的个数
+    /* 是否支持通过中断来检查 remote 消费了一条消息。
+     * 例如：硬件上有一些 TX ACK irq（传输完成后收到中断回复表明传输完成了） */
+	bool txdone_irq;                  
+    /* 是否支持通过 poll 机制来检查 remote 消费了一条消息。
+     * 此标志用于硬件没有 TX ACK irq 机制，但是可以通过查询相关寄存器的某些位
+     * 来检查是否完成传输。如果设置了 txdone_irq，此标志位会被忽略 */  
+	bool txdone_poll;                   
+	unsigned txpoll_period;             // POLL 周期，以 ms 计
+    /* controller 驱动中通过此函数返回设备树参数中设定的通道 */
+	struct mbox_chan *(*of_xlate)(struct mbox_controller *mbox,
+				      const struct of_phandle_args *sp);
+	/* Internal to API */
+	struct hrtimer poll_hrt;
+	struct list_head node;
+};
+```
 
 # 十四、debugfs
 ## 14.1 内核文档
