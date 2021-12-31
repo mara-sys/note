@@ -72,10 +72,12 @@
       - [13.1.1.2 Controller Driver (See include/linux/mailbox_controller.h)](#13112-controller-driver-see-includelinuxmailbox_controllerh)
       - [13.1.1.2 Client Driver (See include/linux/mailbox_client.h)](#13112-client-driver-see-includelinuxmailbox_clienth)
     - [13.1.2 mailbox.txt(bindings)](#1312-mailboxtxtbindings)
-- [十三、debugfs](#十三debugfs)
-  - [13.1 内核文档](#131-内核文档-1)
-    - [13.1.1 debugfs.txt](#1311-debugfstxt)
-  - [13.2 示例](#132-示例)
+  - [13.2 代码分析](#132-代码分析)
+    - [13.2.1 mailbox_controller.h](#1321-mailbox_controllerh)
+- [十四、debugfs](#十四debugfs)
+  - [14.1 内核文档](#141-内核文档)
+    - [14.1.1 debugfs.txt](#1411-debugfstxt)
+  - [14.2 示例](#142-示例)
           - [echo 刷屏的问题](#echo-刷屏的问题)
 
 # 一、reboot
@@ -1258,13 +1260,28 @@ uart@a000 {
 &emsp;&emsp;对于影响了多个 consumer 设备的共用时钟，可以在时钟 provider 节点中指定。
 
 # 十三、mailbox 框架
+```shell
+# 文档
+Documentation
+    -->mailbox.txt #client 和 controller 驱动开发说明
+    devicetree/bindings/mailbox/
+                                -->mailbox.txt #设备树绑定说明
+# 代码
+include/linux/
+    -->mailbox_controller.h 
+    -->mailbox_client.h
+drivers/mailbox/
+    -->mailbox.h
+    -->mailbox.c
+    -->mailbox-test.c #client driver test
+```
 ## 13.1 内核文档
 ### 13.1.1 mailbox.txt
 #### 13.1.1.1 介绍
-&emsp;&emsp;本文档旨在帮助开发人员编写客户端和控制器驱动程序的 API。 但在此之前，让我们注意客户端（尤其是）和控制器驱动程序可能会非常依赖于特定平台的，因为远程固件可能是专有的并实现了非标准协议。 因此，即使两个平台使用，例如，PL320 控制器，客户端驱动程序也不能在它们之间共享。 甚至 PL320 驱动程序也可能需要适应某些特定于平台的怪癖。 因此，API 主要是为了避免为每个平台编写类似的代码副本。 话虽如此，没有什么能阻止远程 f/w 也基于 Linux 并在那里使用相同的 api。 然而，这些都对我们本地没有帮助，因为我们只在客户端的协议级别进行交易。 
+&emsp;&emsp;本文档旨在帮助开发人员编写 client 和 controller 驱动程序的 API。 但在此之前，让我们注意 client（especially）和 controller 驱动程序可能会是非常依赖于特定平台的，因为远程硬件可能是专有的并且实现了非标准协议。 因此，即使两个平台使用，例如，PL320 控制器，client driver 也不能在它们之间共享。 甚至 PL320 驱动程序也可能需要适应某些特定于平台的特性。 因此，API 主要是为了避免为每个平台编写类似的代码副本。 话虽如此，没有什么能阻止远程 f/w 也基于 Linux 并在那里使用相同的 api。 然而，这些都对我们本地没有帮助，因为我们只在客户端的协议级别进行处理。 
 &emsp;&emsp;在实施过程中做出的一些选择是这个“通用”框架的这种特殊性的结果。 
 #### 13.1.1.2 Controller Driver (See include/linux/mailbox_controller.h)
-分配 mbox_controller 和 mbox_chan 数组。 填充 mbox_chan_ops，除了 peek_data() 都是必需的。 控制器驱动程序可能会通过获取 IRQ 或轮询某些硬件标志来知道远程已消耗了一条消息，或者它永远不会知道（客户端通过协议知道）。 按优先顺序排列的方法是 IRQ -> Poll -> None，控制器驱动程序应通过 'txdone_irq' 或 'txdone_poll' 或 none 来设置。 
+&emsp;&emsp;分配 mbox_controller 和 mbox_chan 数组。 填充 mbox_chan_ops，mbox_chan_ops 回调中除了 peek_data() 都是必需的。 控制器驱动程序可能会通过获取 IRQ 或轮询某些硬件标志来知道远程已消耗了一条消息，或者它永远不会知道（客户端通过协议知道）。 按优先顺序排列的方法是 IRQ -> Poll -> None，控制器驱动程序应通过 'txdone_irq' 或 'txdone_poll' 或 none 来设置。 
 #### 13.1.1.2 Client Driver (See include/linux/mailbox_client.h)
 &emsp;&emsp;客户端可能希望在阻塞模式（在返回之前同步发送消息）或非阻塞/异步模式（向 API 提交消息和回调函数并立即返回）下操作。 
 ```c
@@ -1402,11 +1419,14 @@ static void client_demo(struct platform_device *pdev)
 	};
 
 ```
+## 13.2 代码分析
+### 13.2.1 mailbox_controller.h
+&emsp;&emsp;定义了`mbox_controller`（对 mailbox 硬件的抽象）、`mbox_chan`（对 channel 的抽象）`mbox_chan_ops`（操作 channel 的回调函数的集合）。
 
 
-# 十三、debugfs
-## 13.1 内核文档
-### 13.1.1 debugfs.txt
+# 十四、debugfs
+## 14.1 内核文档
+### 14.1.1 debugfs.txt
 [翻译连接](https://www.kernel.org/doc/html/latest/translations/zh_CN/filesystems/debugfs.html)
 &emsp;&emsp;Debugfs是内核开发人员在用户空间获取信息的简单方法。与/proc不同，proc只提供进程信息。也不像sysfs,具有严格的“每个文件一个值“的规则。debugfs根本没有规则,开发人员可以在这里放置他们想要的任何信息。debugfs文件系统也不能用作稳定的ABI接口。从理论上讲，debugfs导出文件的时候没有任何约束。但是[1]实际情况并不总是那么简单。即使是debugfs接口，也最好根据需要进行设计,并尽量保持接口不变。
 &emsp;&emsp;Debugfs通常使用以下命令安装:
@@ -1555,7 +1575,7 @@ void debugfs_remove_recursive(struct dentry *dentry);
 &emsp;&emsp;如果将对应顶层目录的dentry传递给以上函数，则该目录下的整个层次结构将会被删除。
 
 
-## 13.2 示例
+## 14.2 示例
 ```c
 ...
 #include <linux/debugfs.h>
