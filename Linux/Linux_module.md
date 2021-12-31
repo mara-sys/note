@@ -1444,6 +1444,19 @@ struct mbox_controller {
 	struct hrtimer poll_hrt;
 	struct list_head node;
 };
+
+struct mbox_chan {
+	struct mbox_controller *mbox;           // 此通道所属的 controller
+	unsigned txdone_method;                 // 传输完成的通知方式，在 mailbox.h中定义
+    /* 指向占有此 channel 的 client 的指针，client 在 client driver 中声明 */
+	struct mbox_client *cl;                 
+	struct completion tx_complete;          
+	void *active_req;
+	unsigned msg_count, msg_free;           // 在代码中会详细分析
+	void *msg_data[MBOX_TX_QUEUE_LEN];
+	spinlock_t lock; /* Serialise access to the channel */
+	void *con_priv;                         // controller 的私有数据，我用作了channel number
+};
 ```
 
 # 十四、debugfs
