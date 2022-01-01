@@ -405,6 +405,8 @@ static int __init led_init(void)
     /* 2、创建设备 */
     newchrled.device = device_create(newchrled.class, NULL,
         newchrled.devid, NULL, NEWCHRLED_NAME);
+
+    return 0;
 }
 
 static void __exit led_exit(void)
@@ -926,6 +928,16 @@ unsigned int irq_of_parse_and_map(struct device_node *dev,
 ## 第五十二章 Linux 阻塞和非阻塞 IO 实验
 ### 52.1 阻塞和非阻塞 IO
 #### 52.1.1 阻塞和非阻塞简介
-&emsp;&emsp;这
+&emsp;&emsp;这里的“IO”并不是我们“GPIO”。这里的 IO 指的是 Input/Output，也就是输入/输出，是应用程序对驱动设备的输入/输出操作。
+&emsp;&emsp;当应用程序对设备驱动进行操作的时候，如果不能获取到设备资源，那么阻塞式 IO 就会将应用程序对应的线程挂起，直到设备资源可以获取为止。对于非阻塞 IO，应用程序对应的线程不会挂起，它要么一直轮询等待，直到设备资源可以使用，要么就直接放弃。
+
+
+
+
+
+
+
+
+
 
 ## 第五十八章 Linux INPUT子系统实验
