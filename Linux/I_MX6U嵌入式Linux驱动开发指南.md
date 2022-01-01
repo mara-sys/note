@@ -738,6 +738,190 @@ mutex_unlock(&lock); /* 解锁 */
 
 
 ## 第五十一章 Linux中断实验
+&emsp;&emsp;Linux 内核提供了完善的中断框架，我们只需要**申请中断，然后注册中断处理函数即可**。
+### 51.1 Linux 中断简介
+#### 51.1.1 Linux 中断 API 函数
+##### 申请释放中断
+&emsp;&emsp;申请中断：request_irq
+```c
+/* 
+ * irq：要申请中断的中断号，
+ *      可以用类似下面这种方式从设备树中获得中断号
+ *      priv->irq = platform_get_irq(pdev, 0);
+ * handler：中断处理函数，当中断发生以后就会执行此函数
+ * flags：中断标志，定义在 include/linux/interrupt.h中
+ * name：中断名字，设置以后可以在 /proc/interrupts 
+ *       文件中看到对应的中断名字
+ * dev：如果将 flags 设置为 IRQF_SHARED 的话，dev 
+ *      用来区分不同的中断，一般情况下将 dev 设置为设备结构体，
+ *      dev 会传递给中断处理函数 irq_handler_t 的第二个参数
+ * 返回值：0：申请成功
+ *        其他负值：申请失败
+ *        -EBUSY：中断已经被申请了
+ */
+int request_irq(unsigned int irq,
+    irq_handler_t handler,
+    unsigned long flags,
+    const char *name,
+    void *dev)
+```
+&emsp;&emsp;request_irq 函数可能会导致睡眠，因此不能在中断上下文或者其他禁止睡眠的代码段中使用。**request_irq 函数会使能中断，所以不需要我们手动去使能中断。**
+&emsp;&emsp;中断标志（可以通过 | 来组合）：
+
+| 标志                 | 描述                                                         |
+| -------------------- | ------------------------------------------------------------ |
+| IRQF_SHARED          | 多个设备共享一个中断线，共享的所有中断都必须指定此标志。如果使用共享中断的话，request_irq 函数的 dev 参数就是唯一区分他们的标志。 |
+| IRQF_ONESHOT         | 单次中断，中断执行一次就结束。                               |
+| IRQF_TRIGGER_NONE    | 无触发                                                       |
+| IRQF_TRIGGER_RISING  | 上升沿触发                                                   |
+| IRQF_TRIGGER_FALLING | 下降沿触发                                                   |
+| IRQF_TRIGGER_HIGH    | 高电平触发                                                   |
+| IRQF_TRIGGER_LOW     | 低电平触发                                                   |
+
+&emsp;&emsp;释放中断
+```c
+/* 
+ * irq：要释放的中断
+ * dev：如果中断设置为共享（IRQF_SHARED）的话，
+ *      此参数用来区分具体的中断。共享中断只有在释放最
+ *      后中断处理函数的时候才会被禁止掉。
+ * 
+ */
+void free_irq(unsigned int irq,
+    void *dev)
+```
+&emsp;&emsp;如果中断不是共享的，那么 free_irq 会删除中断处理函数并且禁止中断。
+##### 中断处理函数
+&emsp;&emsp;使用 request_irq 函数申请中断的时候需要设置中断处理函数：
+```c
+void free_irq(unsigned int irq, void *dev)
+```
+&emsp;&emsp;第一个参数是中断号，第二个参数是一个指向 void 的指针，需要与 request_irq 函数的 dev 保持一致。用于区分共享中断的不同设备，dev 也可以指向设备数据结构。中断处理函数的返回值为 irqreturn_t 类型，irqreturn_t 类型定义如下：
+```c
+enum irqreturn {
+    IRQ_NONE = (0 << 0),        // interrupt was not from this device
+    IRQ_HANDLED = (1 << 0),     // interrupt was handled by this device
+    IRQ_WAKE_THREAD = (1 << 1), // handler requests to wake the handler thread
+};
+
+typedef enum irqreturn irqreturn_t;
+```
+
+##### 中断使能与禁止函数
+```c
+void enable_irq(unsigned int irq)
+void disable_irq(unsigned int irq)
+```
+&emsp;&emsp;用于使能和禁止指定的中断，irq 就是要禁止的中断号。disable_irq 函数要等到当前正在执行的中断处理函数执行完才返回，因此使用者需要保证不会产生新的中断，并且确保所有已经开始执行的中断处理程序已经全部退出。在这种情况下，可以使用另外一个中断禁止函数：
+```c
+void disable_irq_nosync(unsigned int irq)
+```
+&emsp;&emsp;disable_irq_nosync 函数调用以后立即返回，不会等待当前中断处理程序执行完毕。
+&emsp;&emsp;关闭和使能全局中断使用以下函数：
+```c
+local_irq_enable()
+local_irq_disable()
+```
+&emsp;&emsp;local_irq_enable 用于使能当前处理器中断系统，local_irq_disable 用于禁止当前处理中断系统。不能简单的关闭和使能中断系统，例如，任务 A 关闭全局中断 10s，任务 B 2s 后关闭全局中断，3s 后任务 B 打开全局中断，此时任务 A 关闭全局中断 10s 的愿望就破灭了。因此需要使用下面函数来将中断状态恢复到以前的状态：
+```c
+local_irq_save(flags)
+local_irq_restore(flags)
+```
+&emsp;&emsp;这两个函数是一对， local_irq_save 函数用于禁止中断，并且将中断状态保存在 flags 中。
+local_irq_restore 用于恢复中断，将中断到 flags 状态。
+
+#### 51.1.2 上半部与下半部
+&emsp;&emsp;上半部：上半部就是中断处理函数，那些处理过程比较快，不会占用很长时间的处理就可以放在上半部完成。
+&emsp;&emsp;下半部：如果中断处理过程比较耗时，那么就将这些比较耗时的代码提出来，交给下半部去执行，这样中断处理函数就会快进快出。
+##### 下半部机制
+##### 1、软中断
+&emsp;&emsp;没看懂怎么用
+##### 2、tasklet
+&emsp;&emsp;tasklet 是利用软中断来实现的另外一种下半部机制，即是在软中断类型的基础上实现的，因此如果不需要软中断的并行特性，tasklet 就是最好的选择。也就是说 tasklet 是软中断的一种特殊用法，即**延迟情况下的串行执行**。
+&emsp;&emsp;1、tasklet 结构体，如果要使用 tasklet，必须先定义一个这样的结构体。
+```c
+struct tasklet_struct
+{
+    struct tasklet_struct *next; /* 下一个 tasklet */
+    unsigned long state; /* tasklet 状态 */
+    atomic_t count; /* 计数器，记录对 tasklet 的引用数 */
+    void (*func)(unsigned long); /* tasklet 执行的函数 */
+    unsigned long data; /* 函数 func 的参数 */
+};
+```
+&emsp;&emsp;2、然后需要使用 tasklet_init 函数初始化 tasklet。
+```c
+/* 
+ * t：要初始化的 tasklet
+ * func：tasklet 的处理函数
+ * data：要传递给 func 函数的参数
+ * 返回值：没有返回值
+ */
+void tasklet_init(struct tasklet_struct *t,
+        void (*func)(unsigned long),
+        unsigned long data);
+```
+&emsp;&emsp;1 + 2、以上两步等效于使用宏 DECLARE_TASKLET 来一次性完成 tasklet 的定义和初始化。
+```c
+/* 
+ * name：要定义的 tasklet 名字
+ * func：tasklet 的处理函数
+ * data：传递给 func 函数的参数
+ */
+DECLARE_TASKLET(name, func, data)
+```
+&emsp;&emsp;总结起来就是，
+1. 定义 tasklet 结构体；
+2. 定义 `void (*func)(unsigned long)` 下半部处理函数；
+3. 定义中断处理函数；
+   1. 中断处理函数中需要调度 tasklet；
+4. 在驱动入口函数中对 tasklet 结构体初始化；
+5. 在驱动入口函数中注册中断处理函数
+
+&emsp;&emsp;示例：
+```c
+/* 定义 taselet */
+struct tasklet_struct testtasklet;
+
+/* tasklet 处理函数 */
+void testtasklet_func(unsigned long data)
+{
+    /* tasklet 具体处理内容 */
+}
+
+/* 中断处理函数 */
+irqreturn_t test_handler(int irq, void *dev_id)
+{
+    ......
+    /* 调度 tasklet */
+    tasklet_schedule(&testtasklet);
+    ......
+}
+
+/* 驱动入口函数 */
+static int __init xxxx_init(void)
+{
+    ......
+    /* 初始化 tasklet */
+    tasklet_init(&testtasklet, testtasklet_func, data);
+    /* 注册中断处理函数 */
+    request_irq(xxx_irq, test_handler, 0, "xxx", &xxx_dev);
+    ......
+}
+```
+##### 3、工作队列
+&emsp;&emsp;工作队列是另外一种下半部执行方式，工作队列在进程上下文执行，工作队列将要退后的任务交给一个内核线程去执行，因为工作队列工作在进程上下文，因此工作队列允许睡眠或重新调度。因此如果你要推后的工作可以睡眠那么就可以选择工作队列，否则就只能选择软中断或者 tasklet。
+
+#### 51.1.4 获取中断号
+&emsp;&emsp;从设备树获取中断号：
+```c
+/* 
+ * dev：设备节点
+ * index：索引号，interrupts 属性可能包含多条中断信息，通过 index 指定要获取的信息
+ */
+unsigned int irq_of_parse_and_map(struct device_node *dev,
+                                    int index)
+```
 
 ## 第五十二章 Linux 阻塞和非阻塞 IO 实验
 ### 52.1 阻塞和非阻塞 IO
