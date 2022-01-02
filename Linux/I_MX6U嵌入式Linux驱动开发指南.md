@@ -1016,6 +1016,179 @@ void wake_up_interruptible(wait_queue_head_t *q)
 
 #### 52.1.3 轮询
 &emsp;&emsp;如果用户应用程序以非阻塞的方式访问设备，设备驱动程序就要提供非阻塞的处理方式，也就是轮询。poll、epoll 和 select 可以用于处理轮询，应用程序通过 select、epoll 或 poll 函数来查询设备是否可以操作，如果可以操作的话就从设备读取或者向设备写入数据。当应用程序调用 select、epoll 或 poll 函数的时候设备驱动程序中的 poll 函数就会执行，因此需要在设备驱动程序中编写 poll 函数。
+##### 1、select 函数
+&emsp;&emsp;函数原型如下：
+```c
+/* 
+ * nfds：要监视的下面三种文件描述集合中，最大的文件描述符加 1。
+ * readfds、writefds、exceptfds：指向描述符集合，这三个参数指明了关心
+ *      哪些描述符、需要满足哪些条件。
+ * timeout：超时时间，设置为 NULL　时表示无限期等待。
+ * 返回值：0：表示超市发生，没有任何文件描述符可以进行操作；
+ *        -1：发生错误值；
+ *        其他值：可以进行操作的文件描述符个数
+ */
+int select(int nfds,
+        fd_set *readfds,
+        fd_set *writefds,
+        fd_set *exceptfds,
+        struct timeval *timeout)
+```
+###### fd_set
+&emsp;&emsp;fd_set 类型变量的每一个位都代表了一个文件描述符。readfds 用于监视指定描述符集的读变化，也就是监视这些文件是否可以读取，只要这些集合里面有一个文件可以读取那么 select 就会返回一个大于 0 的值表示文件可以读取。如果没有文件可以读取，那么就会根据 timeout 参数来判断是否超时。可以将 readfds 设置为 NULL，表示不关心任何文件的读变化。writefds 和 readfds 类似，只是 writefds 用于监视这些文件是否可以进行写操作，exceptfds 用于监视这些文件的异常。
+&emsp;&emsp;比如我们现在要从一个设备文件中读取数据，那么就可以定义一个 fd_set 变量，这个变量要传递给参数 readfds。当我们定义好一个 fd_set 变量以后可以使用如下所示几个宏进行操作：
+```c
+void FD_ZERO(fd_set *set)
+void FD_SET(int fd, fd_set *set)
+void FD_CLR(int fd, fd_set *set)
+int FD_ISSET(int fd, fd_set *set)
+```
+&emsp;&emsp;FD_ZERO 用于将 fd_set 变量的所有位都清零， FD_SET 用于将 fd_set 变量的某个位置 1，也就是向 fd_set 添加一个文件描述符，参数 fd 就是要加入的文件描述符。 FD_CLR 用户将 fd_set 变量的某个位清零，也就是将一个文件描述符从 fd_set 中删除，参数 fd 就是要删除的文件描述符。 FD_ISSET 用于测试一个文件是否属于某个集合，参数 fd 就是要判断的文件描述符。
+###### timeout
+&emsp;&emsp;超时时间使用结构体 timeval 表示，结构体定义如下：
+```c
+struct timeval {
+    long tv_sec; /* 秒 */
+    long tv_usec; /* 微妙 */
+};
+```
+&emsp;&emsp;使用 select 函数对某个设备驱动文件进行读非阻塞访问的操作示例如下所示：
+```c
+void main(void)
+{
+    int ret, fd; /* 要监视的文件描述符 */
+    fd_set readfds; /* 读操作文件描述符集 */
+    struct timeval timeout; /* 超时结构体 */
+
+    fd = open("dev_xxx", O_RDWR | O_NONBLOCK); /* 非阻塞式访问 */
+
+    FD_ZERO(&readfds); /* 清除 readfds */
+    FD_SET(fd, &readfds); /* 将 fd 添加到 readfds 里面 */
+
+    /* 构造超时时间 */
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 500000; /* 500ms */
+
+    ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+    switch (ret) {
+        case 0: /* 超时 */
+            printf("timeout!\r\n");
+            break;
+        case -1: /* 错误 */
+            printf("error!\r\n");
+            break;
+        default: /* 可以读取数据 */
+            if(FD_ISSET(fd, &readfds)) { /* 判断是否为 fd 文件描述符 */
+                /* 使用 read 函数读取数据 */
+            }
+            break;
+    }
+}
+```
+##### 2、poll 函数
+&emsp;&emsp;在单个线程中， select 函数能够监视的文件描述符数量有最大的限制，一般为 1024，可以修改内核将监视的文件描述符数量改大，但是这样会降低效率！这个时候就可以使用 poll 函数，poll 函数本质上和 select 没有太大的差别，但是 poll 函数没有最大文件描述符限制， Linux 应用程序中 poll 函数原型如下所示：
+```c
+/* 
+ * fds：要监视的文件描述符集合以及要监视的事件，为一个数组，数组元素
+ *      都是结构体 pollfd 类型的。
+ * nfds：poll 函数要监视的文件描述符数量。
+ * timeout：超时时间，单位为 ms。
+ * 返回值：返回 revents 域中不为 0 的 pollfd 结构体个数，也就是发生事件或错误的文件描述
+ *      数量。
+ *      0：超时
+ *      -1：发生错误，并且设置 error 为错误类型
+ */
+int poll(struct pollfd *fds,
+    nfds_t nfds,
+    int timeout)
+```
+###### pollfd 结构体
+```c
+struct pollfd {
+    int fd;         /* 文件描述符 */
+    short events;   /* 请求的事件 */
+    short revents;  /* 返回的事件 */
+};
+```
+&emsp;&emsp;fd：要监视的文件描述符，如果 fd 无效的话 events 监视事件也就无效，并且 revents 返回 0。
+&emsp;&emsp;events 是要监视的事件，可监视的事件类型如下所示：
+```c
+POLLIN      有数据可以读取。
+POLLPRI     有紧急的数据需要读取。
+POLLOUT     可以写数据。
+POLLERR     指定的文件描述符发生错误。
+POLLHUP     指定的文件描述符挂起。
+POLLNVAL    无效的请求。
+POLLRDNORM  等同于 POLLIN
+```
+&emsp;&emsp;revents 是返回参数，也就是返回的事件，由 Linux 内核设置具体的返回事件。
+&emsp;&emsp;使用 poll 函数对某个设备驱动文件进行读写非阻塞访问的操作示例如下所示：
+```c
+void main(void)
+{
+    int ret;
+    int fd; /* 要监视的文件描述符 */
+    struct pollfd fds;
+
+    fd = open(filename, O_RDWR | O_NONBLOCK); /* 非阻塞式访问 */
+
+    /* 构造结构体 */
+    fds.fd = fd;
+    fds.events = POLLIN; /* 监视数据是否可以读取 */
+
+    ret = poll(&fds, 1, 500); /* 轮询文件是否可操作，超时 500ms */
+    if (ret) { /* 数据有效 */
+        ......
+        /* 读取数据 */
+        ......
+    } else if (ret == 0) { /* 超时 */
+        ......
+    } else if (ret < 0) { /* 错误 */
+        ......
+    }
+}
+```
+
+##### 3、epoll 函数
+&emsp;&emsp;使用传统的 select 和 poll 函数都会随着所监听的 fd 数量的增加，出现效率低下的问题，而且 poll 函数每次必须遍历所有的描述符来检查就绪的描述符，这个过程很浪费时间。为此，epoll 应运而生，epoll 就是为处理大并发而准备的，一般常常在网络编程中使用 epoll 函数。应用程序需要先使用 epoll_create 函数创建一个 epoll 句柄，epoll_create 函数原型如下：
+```c
+/* 
+ * size：在2.6.8 以后就无意义了，随便填写一个大于 0 的值就可以。
+ * 返回值：epoll 句柄，如果为 -1 的话表示创建失败。
+ */
+int epoll_create(int size)
+```
+&emsp;&emsp;epoll 句柄创建成功以后使用 epoll_ctl 函数向其中添加要监视的文件描述符以及监视的事件， epoll_ctl 函数原型如下所示：
+```c
+/* 
+ * epfd：要操作的 epoll 句柄，也就是使用 epoll_create 函数创建的 epoll 句柄。
+ * op：表示要对 epfd（epoll 句柄）进行的操作。
+ * fd：要监视的文件描述符。
+ * event：要监视的事件类型，为 epoll_event 结构体类型的指针。
+ * 返回值：
+ */
+int epoll_ctl(int epfd,
+            int op,
+            int fd,
+            struct epoll_event *event)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
