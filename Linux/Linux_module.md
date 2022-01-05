@@ -2070,7 +2070,9 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 &emsp;&emsp;顾名思义，没仔细看里面内容。
 
 ## 13.3 框架分析
-
+<div align=center>
+<img src="Linux_module_images/130301_frame_00.svg" width="1200">
+</div>
 
 
 
