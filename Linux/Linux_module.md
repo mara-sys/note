@@ -97,10 +97,12 @@
     - [13.3.3 函数调用流程](#1333-函数调用流程)
       - [13.3.3.1 发送数据流程](#13331-发送数据流程)
       - [13.3.3.1 接收数据流程](#13331-接收数据流程)
-  - [13.5 驱动实现](#135-驱动实现)
-    - [13.5.1 dts 配置](#1351-dts-配置)
-    - [13.5.2 controller](#1352-controller)
-    - [13.5.3 client](#1353-client)
+  - [13.4 硬件分析](#134-硬件分析)
+  - [13.5 设备树分析](#135-设备树分析)
+  - [13.6 驱动实现](#136-驱动实现)
+    - [13.6.1 dts 配置](#1361-dts-配置)
+    - [13.6.2 controller](#1362-controller)
+    - [13.6.3 client](#1363-client)
 - [十四、debugfs](#十四debugfs)
   - [14.1 内核文档](#141-内核文档)
     - [14.1.1 debugfs.txt](#1411-debugfstxt)
@@ -2123,16 +2125,23 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 4. `rx_callback`中从设备树指定的地址读取数据，然后使用异步通知的方式通知用户空间；
 5. 用户空间的异步处理函数中调用 ioctl 读取接收通道的数据。
 
-## 13.5 驱动实现
-### 13.5.1 dts 配置
+## 13.4 硬件分析
+&emsp;&emsp;我们的 mailbox 简单而言，就是 CPU 设置`CPU2DSP_INT_SET`以后，可以触发 DSP 的中断，DSP 接收中断以后通过`CPU2DSP_INT_CLEAR`清除中断。DSP 设置`DSP2CPU_INT_SET`以后，可以触发 CPU 的中断，CPU 接收中断以后通过`DSP2CPU_INT_CLEAR`清除中断。
+&emsp;&emsp;每个方向各有 16 个中断，mailbox 框架要求“控制器驱动程序可能会通过获取 IRQ 或轮询某些硬件标志来知道远程已消耗了一条消息，或者它永远不会知道（客户端通过协议知道）。 按优先顺序排列的方法是 IRQ -> Poll -> None，控制器驱动程序应通过 'txdone_irq' 或 'txdone_poll' 或 none 来设置。”
+&emsp;&emsp;我们的硬件不支持 poll 的方式，因为没有 tx 发送完寄存器标志发送完的功能；内核不推荐“None”的方式，即由协议控制。因此我们将每个方向的 16 个中断改为 8 作为 interrupt，8 个作为 ACK 的方式实现`txdone_irq`。
+
+## 13.5 设备树分析
+
+## 13.6 驱动实现
+### 13.6.1 dts 配置
 ```c
 
 ```
-### 13.5.2 controller
+### 13.6.2 controller
 ```c
 
 ```
-### 13.5.3 client
+### 13.6.3 client
 ```c
 
 ```
