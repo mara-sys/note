@@ -76,7 +76,7 @@
       - [13.1.1.2 Controller Driver (See include/linux/mailbox_controller.h)](#13112-controller-driver-see-includelinuxmailbox_controllerh)
       - [13.1.1.2 Client Driver (See include/linux/mailbox_client.h)](#13112-client-driver-see-includelinuxmailbox_clienth)
     - [13.1.2 mailbox.txt(bindings)](#1312-mailboxtxtbindings)
-  - [13.2 代码分析](#132-代码分析)
+  - [13.2 框架代码分析](#132-框架代码分析)
     - [13.2.1 mailbox_controller.h](#1321-mailbox_controllerh)
     - [13.2.2 mailbox_client.h](#1322-mailbox_clienth)
     - [13.2.3 mailbox.c](#1323-mailboxc)
@@ -92,6 +92,15 @@
           - [mbox_free_channel](#mbox_free_channel)
           - [mbox_controller_register 和 mbox_controller_unregister](#mbox_controller_register-和-mbox_controller_unregister)
   - [13.3 框架分析](#133-框架分析)
+    - [13.3.1 client、controller 与 framework](#1331-clientcontroller-与-framework)
+    - [13.3.2 数据结构](#1332-数据结构)
+    - [13.3.3 函数调用流程](#1333-函数调用流程)
+      - [13.3.3.1 发送数据流程](#13331-发送数据流程)
+      - [13.3.3.1 接收数据流程](#13331-接收数据流程)
+  - [13.5 驱动实现](#135-驱动实现)
+    - [13.5.1 dts 配置](#1351-dts-配置)
+    - [13.5.2 controller](#1352-controller)
+    - [13.5.3 client](#1353-client)
 - [十四、debugfs](#十四debugfs)
   - [14.1 内核文档](#141-内核文档)
     - [14.1.1 debugfs.txt](#1411-debugfstxt)
@@ -1754,7 +1763,7 @@ static void client_demo(struct platform_device *pdev)
 	};
 
 ```
-## 13.2 代码分析
+## 13.2 框架代码分析
 ### 13.2.1 mailbox_controller.h
 &emsp;&emsp;定义了`mbox_controller`（对 mailbox 硬件的抽象）、`mbox_chan`（对 channel 的抽象）`mbox_chan_ops`（操作 channel 的回调函数的集合）。
 ```c
@@ -2070,21 +2079,63 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 &emsp;&emsp;顾名思义，没仔细看里面内容。
 
 ## 13.3 框架分析
+### 13.3.1 client、controller 与 framework
+&emsp;&emsp;mailbox 框架用于处理多处理器之间的通信。框架分为 controller 与 client。
+&emsp;&emsp;controller 是直接操作硬件 mailbox 的驱动。它向下直接操作硬件寄存器，通过发送与接收中断（如果硬件支持）完成与 remote 的通信；向上通过框架提供的接口完成与 client 驱动的交流。 
+&emsp;&emsp;client 是 controller 的消费者，向下与 controller 沟通，完成通道申请，数据准备等功能；向上提供可供用户空间操作的接口。
+&emsp;&emsp;mailbox 框架所负责的就是 controller 与 client 之间的接口，内核文档中说：“client 和 controller 驱动程序可能是会非常依赖于特定平台的，因此，client 驱动大概率不能在多个平台之间共享”，所以在`/drivers/mailbox`目录下，只能找到有关 controller 的驱动而找不到 client 的驱动，只能找到一个测试 controller 的`mailbox-test.c`的 client 驱动。client 驱动如何与用户空间交换数据也就由驱动开发者自己决定。
+&emsp;&emsp;下图是两个驱动注册的基本框架：  
 <div align=center>
 <img src="Linux_module_images/130301_frame_00.svg" width="1400">
-</div>
+</div>  
 
+### 13.3.2 数据结构
+&emsp;&emsp;controller 与 client 的数据结构如下图所示：
 <div align=center>
 <img src="Linux_module_images/130302_data_structure.svg" width="1400">
 </div>
 
+&emsp;&emsp;框架中使用`struct mbox_controller`抽象 mailbox 控制器，使用`struct mbox_chan`抽象通道，使用函数集合`struct mbox_chan_ops`来对通道进行操作。上面三个数据结构是针对 controller 的。框架使用`struct mbox_client`抽象客户端，是针对 client 的。  
+&emsp;&emsp;除此之外，我们需要针对我们的设备与驱动定义一个我们自己的设备结构体，如上图所示。client 与 controller 的联系是通过在 client 中申请通道时，在`mbox_request_channel`函数中完成的，一个通道绑定一个`struct mbox_client`结构体。
+
+### 13.3.3 函数调用流程
+&emsp;&emsp;函数调用流程如下图所示：
 <div align=center>
 <img src="Linux_module_images/130303_frame_callback.svg" width="1400">
-</div>
+</div>  
 
+&emsp;&emsp;用户空间与 client 驱动的数据传递使用 ioctl 加异步通知的方式，这一部分内容由驱动开发者自己决定，不属于框架的内容。
+&emsp;&emsp;我们在 client 驱动中创建了设备节点`/dev/mailbox-client`，用户空间通过此文件进行数据读取与发送。8 个发送通道，8 个接收通道。
+#### 13.3.3.1 发送数据流程
+&emsp;&emsp;如上图所示：
+1. 用户空间操作文件句柄发送数据；
+2. 进入 client 驱动的 ioctl 函数，此函数将用户空间数据复制到内核空间，最终调用了`mbox_send_message`函数；
+3. 此函数的具体处理流程可以看后面章节的代码分析，主要就是调用了两个回调函数：client 驱动实现的`tx_prepare`，controller 驱动实现的`send_data`。看名字就可以知道这两个函数的作用。需要注意的是，有些硬件的 mailbox 是有硬件数据传输寄存器的，那么此时，数据传输就可以在`send_data`中完成；有些硬件没有硬件数据传输寄存器，那么也可以在`tx_prepare`中完成实际的数据传输，`send_data`的作用就变成了单纯的**触发中断通知远端处理器**；
+4. 当远端处理器收到中断，并接收数据以后，需要回复给 controller 一个中断表明 Tx 已经完成；
+5. 收到 Tx ACK 以后，controller 注册的中断处理函数需要调用`mbox_chan_txdone`来通知上层本次传输已被远端接收；
+6. `mbox_chan_txdone`通过 client 注册的`tx_done`来告知 client 本次传输已完成。由 client 决定后续处理，`tx_done`的参数记录了数据传输的状态。
 
+#### 13.3.3.1 接收数据流程
+&emsp;&emsp;如上图所示：
+1. 远端处理器发送给 controller 传输数据的中断；
+2. 收到中断以后，controller 注册的中断处理函数调用`mbox_chan_received_data`通知上层收到远端传来的数据，并回复给远端 Rx ACK。
+3. `mbox_chan_received_data`调用客户端注册的`rx_callback`；
+4. `rx_callback`中从设备树指定的地址读取数据，然后使用异步通知的方式通知用户空间；
+5. 用户空间的异步处理函数中调用 ioctl 读取接收通道的数据。
 
+## 13.5 驱动实现
+### 13.5.1 dts 配置
+```c
 
+```
+### 13.5.2 controller
+```c
+
+```
+### 13.5.3 client
+```c
+
+```
 
 
 
