@@ -2071,11 +2071,16 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 
 ## 13.3 框架分析
 <div align=center>
-<img src="Linux_module_images/130301_frame_00.svg" width="1200">
+<img src="Linux_module_images/130301_frame_00.svg" width="1400">
 </div>
 
+<div align=center>
+<img src="Linux_module_images/130302_data_structure.svg" width="1400">
+</div>
 
-
+<div align=center>
+<img src="Linux_module_images/130303_frame_callback.svg" width="1400">
+</div>
 
 
 
