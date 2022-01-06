@@ -99,10 +99,9 @@
       - [13.3.3.1 接收数据流程](#13331-接收数据流程)
   - [13.4 硬件分析](#134-硬件分析)
   - [13.5 设备树分析](#135-设备树分析)
-  - [13.6 驱动实现](#136-驱动实现)
-    - [13.6.1 dts 配置](#1361-dts-配置)
-    - [13.6.2 controller](#1362-controller)
-    - [13.6.3 client](#1363-client)
+    - [13.5.1 controller](#1351-controller)
+    - [13.5.2 client](#1352-client)
+    - [13.5.3 该属性的使用方法](#1353-该属性的使用方法)
 - [十四、debugfs](#十四debugfs)
   - [14.1 内核文档](#141-内核文档)
     - [14.1.1 debugfs.txt](#1411-debugfstxt)
@@ -2131,20 +2130,72 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 &emsp;&emsp;我们的硬件不支持 poll 的方式，因为没有 tx 发送完寄存器标志发送完的功能；内核不推荐“None”的方式，即由协议控制。因此我们将每个方向的 16 个中断改为 8 作为 interrupt，8 个作为 ACK 的方式实现`txdone_irq`。
 
 ## 13.5 设备树分析
+&emsp;&emsp;示例：
+```c
+/* controller */
+mailbox: mailbox@970e0000 {
+    ......
+    compatible          = ;
+    ......
+    #mbox-cells = <1>;
+};
 
-## 13.6 驱动实现
-### 13.6.1 dts 配置
+/* client */
+&manage_subsys {
+    mailbox_client: mailbox_client@0 {
+        compatible = "mailbox-client";
+        mboxes =    <&mailbox 0>, <&mailbox 1>, <&mailbox 2>, <&mailbox 3>,
+                    ......
+                    <&mailbox 12>, <&mailbox 13>, <&mailbox 14>, <&mailbox 15>;
+        mbox-names = "tx_chan_0", "tx_chan_1", "tx_chan_2", "tx_chan_3", 
+                    ...... 
+                    "rx_chan_4", "rx_chan_5", "rx_chan_6", "rx_chan_7";                    
+        reg =   <0x1 0x087ffe00 0x0 0x20>, /* cpu2dsp channel 0 */
+                <0x1 0x087ffe20 0x0 0x20>, /* cpu2dsp channel 1 */
+                ......
+                <0x1 0x087fffc0 0x0 0x20>, /* dsp2cpu channel 6 */
+                <0x1 0x087fffe0 0x0 0x20>; /* dsp2cpu channel 7 */
+    };
+};
+```
+### 13.5.1 controller
+&emsp;&emsp;必须有属性`#mbox-cells`，值至少为 1。它指明了 client 属性`mboxes` cell 的个数。
+### 13.5.2 client
+&emsp;&emsp;必须有属性`mboxes`，它会提供给驱动通道的信息。
+&emsp;&emsp;可选属性`mbox-names`，是`mboxes`的别名。
+&emsp;&emsp;可选属性`reg`，mailbox client 与 remote 通信而保留的任何内存的一部分。
+### 13.5.3 该属性的使用方法
+&emsp;&emsp;`mbox-cells`、`mboxes`、`mbox-names`三个属性是在申请通道时用到的。
 ```c
 
-```
-### 13.6.2 controller
-```c
+/* mailbox.c */
+struct of_phandle_args spec;
 
-```
-### 13.6.3 client
-```c
+if (of_parse_phandle_with_args(dev->of_node, "mboxes",
+                    "#mbox-cells", index, &spec)) {
+    dev_dbg(dev, "%s: can't parse \"mboxes\" property\n", __func__);
+    mutex_unlock(&con_mutex);
+    return ERR_PTR(-ENODEV);
+}
 
+chan = ERR_PTR(-EPROBE_DEFER);
+list_for_each_entry(mbox, &mbox_cons, node)
+    if (mbox->dev->of_node == spec.np) {
+        chan = mbox->of_xlate(mbox, &spec);
+        break;
+    }
+
+/* controller driver */
+static struct mbox_chan *canaan_mailbox_xlate(struct mbox_controller *controller,
+                        const struct of_phandle_args *spec)
+{
+    unsigned int ch = spec->args[0];
+    ......
+    return &mbox->chan[ch];
+}
 ```
+&emsp;&emsp;在这里我们将其用作了通道号，也可以添加别的特定于硬件的信息，具体解释由驱动开发者自行决定。
+
 
 
 
