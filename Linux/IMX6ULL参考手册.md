@@ -12,7 +12,8 @@
 &emsp;&emsp;DMA 主机仅生成到 APBH 的正常读/写传输。 它不会生成设置、清除或切换 (SCT) 传输。 
 &emsp;&emsp;在任何请求的 PIO 字传输到外设后，DMA 检查通道命令结构中的两位命令字段。 表 15-3 显示了 DMA 实现的四个命令。 
 &emsp;&emsp;DMA_WRITE 操作将数据字节从相关外设复制到系统存储器（片上 RAM 或 SDRAM）。 
-
+&emsp;&emsp;DMA_READ 操作将数据字节从系统存储器复制到 APB 外设。 DMA 引擎包含一个共享字节对齐器，用于对齐来自系统存储器和外设的字节。 外设总是假设小端对齐的数据到达或离开它们的 32 位 APB。 DMA_READ 传输使用命令结构中的 BUFFER_ADDRESS 字指向要由 DMA_READ 命令读取的 DMA 数据缓冲区。
+&emsp;&emsp;NO_DMA_XFER 命令用于将 PIO 字写入设备而不执行任何 DMA 数据字节传输。 此命令在激活 NAND 设备 CHECKSTATUS 操作等应用中很有用。 检查状态命令从 NAND 设备读取状态字节，对作为 PIO 传输的一部分提供的预期值执行 XOR 和 MASK。 读取检查完成后（请参阅 NAND 读取状态轮询示例），NO_DMA_XFER 命令完成。 外设中的结果是其感测线由比较结果驱动。 感测触发器仅由执行的设备的 CHECKSTATUS 更新。 在未来的某个时刻，该链包含具有第四个也是最后一个命令值的 DMA 命令结构，即 DMA_SENSE 命令。 
 
 
 
