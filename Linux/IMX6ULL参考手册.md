@@ -259,7 +259,14 @@
 
 #### 40.7.4 PWM Sample Register (PWMx_PWMSAR)
 &emsp;&emsp;PWM 采样寄存器 (PWM_PWMSAR) 是 FIFO 的输入。 16 位字被加载到 FIFO。 FIFO 可以随时写入，但只能在 PWM 使能时读取。 如果 FIFO 的所有值都已被使用，PWM 将以最后设置的占空比设置运行，直到重新加载 FIFO 或禁用 PWM。 当写入新值时，占空比会在当前周期结束后发生变化。
-&emsp;&emsp;采样寄存器中的零值将导致 PWMO 输出信号始终为低/高（POUTC = 00 为低，POUTC = 01 为高），不会产生输出波形。 如果此寄存器中的值高于 PERIOD + 1，则输出将永远不会根据 POUTC 值设置/重置。 
+&emsp;&emsp;采样寄存器中的零值将导致 PWMO 输出信号始终为低/高（POUTC = 00 为低，POUTC = 01 为高），不会产生输出波形。 如果此寄存器中的值高于 PERIOD + 1，则输出将永远不会根据 POUTC 值设置/重置。
+
+| 位             | 描述                                                         |
+| -------------- | ------------------------------------------------------------ |
+| 31-16 reserved |                                                              |
+| SAMPLE         | 样本值。 这是 4x16 FIFO 的输入。 该寄存器中的值表示当前正在使用的样本的值。 |
+
+ 
 
 #### 40.7.5 PWM Period Register (PWMx_PWMPR)
 &emsp;&emsp;PWM 周期寄存器 (PWM_PWMPR) 决定 PWM 输出信号的周期。 计数器值与 PERIOD + 1 匹配后，计数器复位以开始另一个周期。 
