@@ -23,7 +23,8 @@
     - [8.1.5 权限标识方法](#815-权限标识方法)
     - [8.1.6 pwm.c中宏定义的展开](#816-pwmc中宏定义的展开)
     - [8.1.7 device_attribute结构体的定义](#817-device_attribute结构体的定义)
-    - [8.1.8 将属性公开到文件系统中](#818-将属性公开到文件系统中)
+    - [8.1.8 ATTRIBUTE_GROUPS](#818-attribute_groups)
+    - [8.1.9 将属性公开到文件系统中](#819-将属性公开到文件系统中)
   - [8.2 bitmap DECLARE_BITMAP](#82-bitmap-declare_bitmap)
     - [8.2.1 使用bitmap的目的](#821-使用bitmap的目的)
     - [8.2.2 DECLARE_BITMAP](#822-declare_bitmap)
@@ -760,8 +761,8 @@ struct device_attribute {
 };
 ```
 &emsp;&emsp;该结构体是对attribute结构体的进一步封装，并提供了两个函数指针，show函数用于读取设备的属性文件，而store则是用于写设备的属性文件，**当我们在linux驱动程序中实现了这两个函数后，便可以使用cat和echo命令对设备属性文件进行读写操作。**
-### 8.1.8 将属性公开到文件系统中
-&emsp;&emsp;可以通过ATTRIBUTE_GROUPS宏定义来实现，在pwm的sysfs.c中可以看到，其中的dev_attr_name就是在DEVICE_ATTR中定义的结构体。
+### 8.1.8 ATTRIBUTE_GROUPS
+&emsp;&emsp;可以通过 ATTRIBUTE_GROUPS 宏定义来实现，在 pwm 的 sysfs.c 中可以看到，其中的 dev_attr_name 就是在 DEVICE_ATTR 中定义的结构体。
 ```c
 static struct attribute *pwm_attrs[] = {
     &dev_attr_period.attr,
@@ -773,6 +774,35 @@ static struct attribute *pwm_attrs[] = {
 };
 ATTRIBUTE_GROUPS(pwm);
 ```
+&emsp;&emsp;ATTRIBUTE_GROUPS 的宏定义
+```c
+#define __ATTRIBUTE_GROUPS(_name)				\
+static const struct attribute_group *_name##_groups[] = {	\
+	&_name##_group,						\
+	NULL,							\
+}
+
+#define ATTRIBUTE_GROUPS(_name)					\
+static const struct attribute_group _name##_group = {		\
+	.attrs = _name##_attrs,					\
+};								\
+__ATTRIBUTE_GROUPS(_name)
+```
+&emsp;&emsp;以上面的 pwm 为例，展开定义以后如下所示：
+```c
+static const struct attribute_group pwm_group = {
+    .attrs = pwm_attrs,
+};
+
+static const struct attribute_group pwm_groups[] = {
+    &pwm_group,
+    NULL,
+};
+```
+&emsp;&emsp;即，定义了一个 attribute_group 的结构体数字组：pwm_groups，其第一个成员的`.attrs`属性为上面定义的`pwm_attrs`。
+### 8.1.9 将属性公开到文件系统中
+&emsp;&emsp;将上面的`pwm_groups`赋给 device 结构体的`groups`成员（该设备的默认 attribute 集合，将会在设备注册时自动在 sysfs 中创建对应的文件），然后在`device_register`此设备时，会自动创建相关属性。  
+&emsp;&emsp;在`/drivers/pwm/sysfs.c`中，将一个类似的集合赋值给了一个 class 变量的`.dev_groups`成员，然后在`device_create`此 class 变量时也导出了其属性集合，不知道是不是一样的原理，待研究。
 
 ## 8.2 bitmap DECLARE_BITMAP
 ### 8.2.1 使用bitmap的目的
