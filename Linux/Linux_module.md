@@ -47,6 +47,19 @@
 - [十、 PWM框架](#十-pwm框架)
   - [10.1 core.c文件分析](#101-corec文件分析)
     - [10.1.1 函数分析](#1011-函数分析)
+          - [alloc_pwms](#alloc_pwms)
+          - [free_pwms](#free_pwms)
+          - [pwmchip_find_by_name](#pwmchip_find_by_name)
+          - [pwm_device_request](#pwm_device_request)
+          - [of_pwm_xlate_with_flags](#of_pwm_xlate_with_flags)
+          - [of_pwm_simple_xlate](#of_pwm_simple_xlate)
+          - [of_pwmchip_add](#of_pwmchip_add)
+          - [of_pwmchip_remove](#of_pwmchip_remove)
+          - [pwm_set_chip_data](#pwm_set_chip_data)
+          - [pwm_get_chip_data](#pwm_get_chip_data)
+          - [pwm_ops_check](#pwm_ops_check)
+          - [pwmchip_add_with_polarity](#pwmchip_add_with_polarity)
+          - [pwmchip_add](#pwmchip_add)
   - [10.2 pwm.h文件分析](#102-pwmh文件分析)
     - [10.2.1 结构体分析](#1021-结构体分析)
       - [10.2.1.1 pwm_polarity](#10211-pwm_polarity)
@@ -1216,7 +1229,7 @@ include/linux/pwm.h
 ```
 ## 10.1 core.c文件分析
 ### 10.1.1 函数分析
-* alloc_pwms
+###### alloc_pwms
 函数：`static int alloc_pwms(int pwm, unsigned int count)`
 作用：为编号值为`pwm`的pwmchip申请`count`个pwm编号。
 ```c
@@ -1227,7 +1240,8 @@ static int alloc_pwms(int pwm, unsigned int count)
                         count, 0);
 
     //申请成功的条件：申请的pwm编号值需要大于零，且申请到的count个连续为0
-    //的地址的起始索引`start`需要等于申请的pwm编号。
+    //的地址的起始索引`start`需要等于申请的pwm编号；或者申请的 pwm 编号小
+    //于 0，即 chip->base < 0。
     //例如：有两个pwmchip，每个pwmchip有三路pwm输出，即（npwm），那么，第一个
     //pwm编号是0，申请的count值是3，返回的start值是0，相等，申请成功；
     //第二个pwm编号是2，申请的count值是3，返回的count值是2，相等，申请成功。
@@ -1237,9 +1251,9 @@ static int alloc_pwms(int pwm, unsigned int count)
     return start;
 }
 ```
-* free_pwms
+###### free_pwms
 函数：`static void free_pwms(struct pwm_chip *chip)`
-作用：释放pwmchip及其下面的pwm_device，还有pwmchip的pwm编号
+作用：释放 pwmchip 及其下面的 pwm_device。就是清除 pwmchip 的 pwm 编号和它在 radix_tree 中的记录，然后释放之前申请的 pwm_device 的内存。
 ```c
 static void free_pwms(struct pwm_chip *chip)
 {
@@ -1259,34 +1273,147 @@ static void free_pwms(struct pwm_chip *chip)
     chip->pwms = NULL;
 }
 ```
-* pwmchip_find_by_name
+###### pwmchip_find_by_name
 函数：`static struct pwm_chip *pwmchip_find_by_name(const char *name)`
 作用：根据`name`来查找pwmchip
 
-* pwm_device_request
+###### pwm_device_request
 函数：`static int pwm_device_request(struct pwm_device *pwm, const char *label)`
-作用：
+作用：使用回调`pwm->chip->ops->request`请求一个 pwm_device，实现相应的成员的赋值之类的，很多驱动都没有实现此回调。
+1. 检查`pwm_device.flags`是否置位了`PWMF_REQUESTED`，该位标记 pwm_device 的请求情况；
+2. 使用`try_module_get`将模块 module 的引用计数加 1；
+3. 如果实现了回调函数 request，调用此回调函数做一些驱动自己的事情；
+4. 置位`pwm_device.flags`，表明此 pwm_device 已经被请求了。
 
-* of_pwm_xlate_with_flags
-* of_pwm_simple_xlate
-* of_pwmchip_add
-* of_pwmchip_remove
-* pwm_set_chip_data
+###### of_pwm_xlate_with_flags
+```c
+/* 
+ * pc：pwm_chip
+ * args：pwm_chip 对应的 handler。
+ */
+struct pwm_device *
+of_pwm_xlate_with_flags(struct pwm_chip *pc, const struct of_phandle_args *args)
+```
+作用：该函数主要根据设备树中使用 pwm consumer 的`pwms`属性来设置 pwm_device 的周期和极性。如果 pwm_chip 的`#pwm-cells`属性值 >= 3，那么可以在驱动的 probe 函数中将`pwm_chip.of_xlate`成员赋值为此函数。如果`#pwm-cells`值为 2，那么在驱动中不用管，框架会将其赋值为另一个回调函数。
+
+`#pwm-cells`指明了`pwms`中有几个 cell，其含义依次是：pwm provider，pwm 通道，周期，极性。
+示例一：
+```c
+/* pwm_chip provider */
+pwm1: pwm@02080000 {
+    compatible = "fsl,imx6ul-pwm", "fsl,imx27-pwm";
+    ......
+    #pwm-cells = <2>;
+};
+
+/* pwm_device consumer */
+backlight {
+    compatible = "pwm-backlight";
+    pwms = <&pwm1 0 5000000>;
+    ......
+};
+```
+&emsp;&emsp;此驱动的 probe 函数中没有给 .of_xlate 赋值。
+示例二：
+```c
+pwm1: pwm@02080000 {
+    ......
+    #pwm-cells = <3>;
+};
+
+/* pwm_device consumer */
+backlight {
+    pwms = <&pwm2 0 500000 PWM_POLARITY_INVERTED>;
+    ......
+};
+
+/* driver probe */
+{
+    ......
+    pwm_chip.of_xlate = of_pwm_xlate_with_flags;
+}
+```
+
+###### of_pwm_simple_xlate
+```c
+/* 
+ * pc：pwm_chip
+ * args：pwm_chip 对应的 handler。
+ */
+static struct pwm_device *
+of_pwm_simple_xlate(struct pwm_chip *pc, const struct of_phandle_args *args)
+```
+&emsp;&emsp;由函数参数及名字可以看出，此函数是上面函数的简化版，做的工作基本一样，只是没有极性设置。此函数给`#pwm-cells`属性为 2的设备使用，且在驱动中不需要给`pwm_chip.of_xlate`赋值，框架会进行赋值。
+###### of_pwmchip_add
+函数：`static void of_pwmchip_add(struct pwm_chip *chip)`
+作用：调用了`of_node_get`，增加节点的引用计数。其次还做了判断：如果`of_xlate`回调没有在驱动中实现，那么将其赋值为`of_pwm_simple_xlate`。
+###### of_pwmchip_remove
+函数：`static void of_pwmchip_remove(struct pwm_chip *chip)`
+作用：主要调用了`of_node_put`，减少节点的引用计数。
+###### pwm_set_chip_data
 函数：`int pwm_set_chip_data(struct pwm_device *pwm, void *data)`
-作用：为pwm_device配置独有的数据
-* pwm_get_chip_data
+作用：为 pwm_device 配置私有数据
+###### pwm_get_chip_data
 函数：`void *pwm_get_chip_data(struct pwm_device *pwm)`
-作用：获取pwm_device中配置的独有的数据
-* pwm_ops_check
+作用：获取 pwm_device 中配置的私有数据
+###### pwm_ops_check
 函数：`static bool pwm_ops_check(const struct pwm_ops *ops)`
 作用：检查驱动是否添加了操作函数，要么同时添加了`config`, `enable`, `disable`这三个传统的非原子操作的函数，要么添加了`apply`原子操作函数。否则返回false
-* pwmchip_add_with_polarity
+###### pwmchip_add_with_polarity
 函数：`int pwmchip_add_with_polarity(struct pwm_chip *chip,
 			      enum pwm_polarity polarity)`
 作用：注册一个新的pwm chip。如果chip->base < 0，使用动态申请的base号。所有通道的极性被参数`polarity`指定。
-* pwmchip_add
+###### pwmchip_add
 函数：`int pwmchip_add(struct pwm_chip *chip)`
-作用：与上面的一样，只是没有添加默认的极性。
+作用：与上面的一样，只是没有添加默认的极性。注册一个 pwm_chip，驱动中就是调用此函数完成注册。
+```c
+/* 省略了一些返回值的判断 */
+int pwmchip_add(struct pwm_chip *chip)
+{
+    struct pwm_device *pwm;
+
+	if (!chip || !chip->dev || !chip->ops || !chip->ops->config ||
+	    !chip->ops->enable || !chip->ops->disable || !chip->npwm)
+		return -EINVAL;
+
+	ret = alloc_pwms(chip->base, chip->npwm);
+
+	chip->pwms = kzalloc(chip->npwm * sizeof(*pwm), GFP_KERNEL);
+
+	chip->base = ret;
+
+	for (i = 0; i < chip->npwm; i++) {
+		pwm = &chip->pwms[i];
+
+		pwm->chip = chip;
+		pwm->pwm = chip->base + i;
+		pwm->hwpwm = i;
+
+		radix_tree_insert(&pwm_tree, pwm->pwm, pwm);
+	}
+
+	bitmap_set(allocated_pwms, chip->base, chip->npwm);
+
+	INIT_LIST_HEAD(&chip->list);
+	list_add(&chip->list, &pwm_chips);
+
+	ret = 0;
+
+	if (IS_ENABLED(CONFIG_OF))
+		of_pwmchip_add(chip);
+
+	pwmchip_sysfs_export(chip);
+
+out:
+	mutex_unlock(&pwm_lock);
+	return ret;
+}
+```
+&emsp;&emsp;此函数的主要流程如下：
+1. 判断必要的回调函数是否都注册了；
+2. 调用 alloc_pwms 申请一段标号，数量为 npwm，返回值是申请的那段标号的起始值，然后赋值给 base；
+3. 给每个 pwm_device 的成员赋值，包括其所属的 pwm_chip，pwm 代表其在所有 pwm 设备中的标号，hwpwm 代表其在 pwm_chip 中的标号。然后将每个 pwm_device 和其在所有设备中的标号一起加入 radix_tree 中；
+4. 如果配置了设备树，那么
 * pwmchip_remove
 函数：`int pwmchip_remove(struct pwm_chip *chip)`
 作用：移除pwm_chip
