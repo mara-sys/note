@@ -60,6 +60,8 @@
           - [pwm_ops_check](#pwm_ops_check)
           - [pwmchip_add_with_polarity](#pwmchip_add_with_polarity)
           - [pwmchip_add](#pwmchip_add)
+          - [pwmchip_remove](#pwmchip_remove)
+          - [pwm_request](#pwm_request)
   - [10.2 pwm.h文件分析](#102-pwmh文件分析)
     - [10.2.1 结构体分析](#1021-结构体分析)
       - [10.2.1.1 pwm_polarity](#10211-pwm_polarity)
@@ -1279,11 +1281,12 @@ static void free_pwms(struct pwm_chip *chip)
 
 ###### pwm_device_request
 函数：`static int pwm_device_request(struct pwm_device *pwm, const char *label)`
-作用：使用回调`pwm->chip->ops->request`请求一个 pwm_device，实现相应的成员的赋值之类的，很多驱动都没有实现此回调。
+作用：使用回调`pwm->chip->ops->request`请求一个 pwm_device，实现相应的成员的赋值之类的，很多驱动都没有实现此回调。**将 pwm_device.flags 置为为`PWMF_REQUESTED`，表示此 pwm_device 已经被使用了**。传入参数是一个指针，相应的改变直接在此指针中改动。
 1. 检查`pwm_device.flags`是否置位了`PWMF_REQUESTED`，该位标记 pwm_device 的请求情况；
 2. 使用`try_module_get`将模块 module 的引用计数加 1；
 3. 如果实现了回调函数 request，调用此回调函数做一些驱动自己的事情；
 4. 置位`pwm_device.flags`，表明此 pwm_device 已经被请求了。
+5. 将传入的参数`label`赋给 pwm_device。
 
 ###### of_pwm_xlate_with_flags
 ```c
@@ -1413,10 +1416,30 @@ out:
 1. 判断必要的回调函数是否都注册了；
 2. 调用 alloc_pwms 申请一段标号，数量为 npwm，返回值是申请的那段标号的起始值，然后赋值给 base；
 3. 给每个 pwm_device 的成员赋值，包括其所属的 pwm_chip，pwm 代表其在所有 pwm 设备中的标号，hwpwm 代表其在 pwm_chip 中的标号。然后将每个 pwm_device 和其在所有设备中的标号一起加入 radix_tree 中；
-4. 如果配置了设备树，那么
-* pwmchip_remove
+4. 如果配置了设备树，那么调用`of_pwmchip_add`来增加节点引用计数。如果`of_xlate`没有赋值，在该函数中为其赋值；
+5. 调用`pwmchip_sysfs_export`将 pwm_chip 的属性导出到文件系统中。
+###### pwmchip_remove
 函数：`int pwmchip_remove(struct pwm_chip *chip)`
 作用：移除pwm_chip
+&emsp;&emsp;此函数的主要流程如下：
+1. 判断该 pwm_chip 的每个 pwm_device 是否还在被申请中（通过 flags 来判断），如果还在被申请中，退出；否则继续后面的流程；
+2. 删除链表中的 pwm_chip；
+3. 调用`of_pwmchip_remove`减少引用计数
+4. 释放注册时申请的 pwm_device 的内存；
+5. 从文件系统中删除注册时导出的文件属性。
+
+###### pwm_request
+```c
+/**
+ * 申请一个 pwm_device
+ * pwm_id: pwm_device 的全局索引号
+ * label: PWM 设备的 label
+ * 返回值：对应的 pwm_device
+ */
+struct pwm_device *pwm_request(int pwm, const char *label)
+```
+&emsp;&emsp;此函数的主要流程如下：
+
 * pwm_apply_state
 函数：`int pwm_apply_state(struct pwm_device *pwm, struct pwm_state *state)`
 作用：将新的pwm状态设到pwm device中，如果driver中使用的新的apply函数，则使用apply函数，否则使用旧的enable, config等函数。
