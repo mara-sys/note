@@ -62,6 +62,20 @@
           - [pwmchip_add](#pwmchip_add)
           - [pwmchip_remove](#pwmchip_remove)
           - [pwm_request](#pwm_request)
+          - [pwm_request_form_chip](#pwm_request_form_chip)
+          - [pwm_free](#pwm_free)
+          - [pwm_config](#pwm_config)
+          - [pwm_set_polarity](#pwm_set_polarity)
+          - [pwm_enable](#pwm_enable)
+          - [pwm_disable](#pwm_disable)
+          - [of_node_to_pwmchip](#of_node_to_pwmchip)
+          - [of_pwm_get](#of_pwm_get)
+          - [pwm_add_table](#pwm_add_table)
+          - [pwm_get](#pwm_get)
+          - [pwm_apply_state](#pwm_apply_state)
+          - [pwm_capture](#pwm_capture)
+          - [pwm_adjust_config](#pwm_adjust_config)
+          - [of_node_to_pwmchip](#of_node_to_pwmchip-1)
   - [10.2 pwm.h文件分析](#102-pwmh文件分析)
     - [10.2.1 结构体分析](#1021-结构体分析)
       - [10.2.1.1 pwm_polarity](#10211-pwm_polarity)
@@ -1439,18 +1453,62 @@ out:
 struct pwm_device *pwm_request(int pwm, const char *label)
 ```
 &emsp;&emsp;此函数的主要流程如下：
+1. 首先判断 pwm 的全局索引号是否合法；
+2. 调用`pwm_to_device`根据 pwm 全局索引从 radix_tree 中获取 pwm_device；
+3. 调用`pwm_device_request`完成 module 引用计数，flags 标志位设置。
 
-* pwm_apply_state
+###### pwm_request_form_chip
+作用：从一个指定的 pwm_chip 中获取 pwm_device，与上面函数的不同是，上面的索引号是全局索引号，且不需要提供 pwm_chip；此函数提供的索引号是 pwm_chip 内部的索引号，需要提供对应的 pwm_chip。
+
+###### pwm_free
+作用：调用了`pwm_put`来释放一个 pwm_device
+
+###### pwm_config
+作用：调用了驱动中的回调函数`config`来配置周期和占空比。
+
+###### pwm_set_polarity
+作用：设置极性，设置成功以后为对应的 pwm_device 结构体成员 polarity 赋值为对应的极性。
+
+###### pwm_enable
+作用：调用回调函数`pwm_enable`使能。
+
+###### pwm_disable
+作用：调用回调函数`pwm_disable`失能。
+
+###### of_node_to_pwmchip
+```c
+/* 
+ * 根据传入的节点参数获得对应的 pwm_chip。（从 pwm_chips 链表中查找）
+ */
+static struct pwm_chip *of_node_to_pwmchip(struct device_node *np)
+```
+
+###### of_pwm_get
+&emsp;&emsp;此函数的主要流程如下：
+1. 根据 con_id 和`pwm-names`属性中的名字比对，获取 con_id 对应的索引；如果 con_id 为空，则索引默认为 0，即`pwm-names`中的第一个。
+2. 调用`of_parse_phandle_with_args(np, "pwms", "#pwm-cells", index, &args)`获取参数；
+3. 调用`of_node_to_pwmchip`来获取 pwm_chip；
+4. 判断了设备树中的 cell 和设置的`of_pwm_n_cells`是否相等；
+5. 调用`of_xlate`进行 pwm 的配置，极性和周期等；
+6. 设置 pwm_device 的 label，如果 con_id 不为空，就设为 con_id，否则从`pwm-names`中查找，否则设为设备节点名；
+7. 调用了`of_node_put`。
+
+###### pwm_add_table
+每理解怎么用
+
+###### pwm_get
+
+###### pwm_apply_state
 函数：`int pwm_apply_state(struct pwm_device *pwm, struct pwm_state *state)`
 作用：将新的pwm状态设到pwm device中，如果driver中使用的新的apply函数，则使用apply函数，否则使用旧的enable, config等函数。
-* pwm_capture
+###### pwm_capture
 函数：`int pwm_capture(struct pwm_device *pwm, struct pwm_capture *result,
 		unsigned long timeout)`
 作用：捕获pwm_device的数据
-* pwm_adjust_config
+###### pwm_adjust_config
 函数：`int pwm_adjust_config(struct pwm_device *pwm)`
 作用：此函数将根据设备树或PWM查找表提供的PWM参数调整PWM配置。这对于bootloader配置Linux很有用。就是根据结构体pwm_args中的参数来配置pwm，pwm_state结构体保存的是读取的pwm的参数信息，pwm_args结构体保存的是要配给pwm的参数。  
-* of_node_to_pwmchip
+###### of_node_to_pwmchip
 函数：`static struct pwm_chip *of_node_to_pwmchip(struct device_node *np)`
 作用：根据设备节点找到pwm_chip
 
