@@ -1,4 +1,81 @@
 # I.MX6U嵌入式Linux驱动开发指南
+- [I.MX6U嵌入式Linux驱动开发指南](#imx6u嵌入式linux驱动开发指南)
+- [第四篇 ARM Linux 驱动开发篇](#第四篇-arm-linux-驱动开发篇)
+  - [驱动相关知识总结](#驱动相关知识总结)
+    - [1 Linux 设备号](#1-linux-设备号)
+      - [1.1 设备号的组成](#11-设备号的组成)
+      - [1.2 旧设备号的分配](#12-旧设备号的分配)
+      - [1.3 新设备号的分配](#13-新设备号的分配)
+    - [2 printk 函数消息级别](#2-printk-函数消息级别)
+  - [第四十章 字符设备驱动开发](#第四十章-字符设备驱动开发)
+    - [40.1 字符设备驱动简介](#401-字符设备驱动简介)
+    - [40.2 字符设备驱动开发步骤](#402-字符设备驱动开发步骤)
+      - [40.2.1 驱动模块的加载和卸载](#4021-驱动模块的加载和卸载)
+      - [40.2.2 字符设备注册与注销](#4022-字符设备注册与注销)
+      - [40.2.4 添加 LICENSE 和作者信息](#4024-添加-license-和作者信息)
+    - [40.4](#404)
+      - [40.4.3 编译驱动程序和测试APP](#4043-编译驱动程序和测试app)
+  - [第四十一章 （物理地址和虚拟地址映射函数）](#第四十一章-物理地址和虚拟地址映射函数)
+  - [第四十二章 新字符设备驱动实验](#第四十二章-新字符设备驱动实验)
+    - [42.1 新字符设备驱动原理](#421-新字符设备驱动原理)
+      - [42.1.1 分配和释放设备号](#4211-分配和释放设备号)
+      - [42.1.2 新的字符设备注册方法](#4212-新的字符设备注册方法)
+    - [42.2 自动创建设备节点](#422-自动创建设备节点)
+    - [42.4 总结](#424-总结)
+  - [第四十三章 设备树](#第四十三章-设备树)
+    - [43.2 DTS、DTB 和 DTC](#432-dtsdtb-和-dtc)
+    - [43.5 设备树在系统中的体现](#435-设备树在系统中的体现)
+    - [43.9 设备树常用 OF 操作函数](#439-设备树常用-of-操作函数)
+      - [43.9.1 查找节点的 OF 函数](#4391-查找节点的-of-函数)
+      - [43.9.3 查找属性值的 OF 函数](#4393-查找属性值的-of-函数)
+      - [43.9.4 其他常用的 OF 函数](#4394-其他常用的-of-函数)
+  - [第四十五章 pinctrl 和 gpio 子系统实验](#第四十五章-pinctrl-和-gpio-子系统实验)
+  - [第四十七章 Linux 并发与竞争](#第四十七章-linux-并发与竞争)
+    - [47.1 并发与竞争](#471-并发与竞争)
+    - [47.2 原子操作](#472-原子操作)
+      - [47.2.2 原子整型操作 API 函数](#4722-原子整型操作-api-函数)
+      - [47.2.3 原子位操作 API 函数](#4723-原子位操作-api-函数)
+    - [47.3 自旋锁](#473-自旋锁)
+      - [47.3.2 自旋锁 API 函数](#4732-自旋锁-api-函数)
+      - [47.3.3 自旋锁使用注意事项](#4733-自旋锁使用注意事项)
+    - [47.4 信号量](#474-信号量)
+      - [47.4.2 信号量 API 函数](#4742-信号量-api-函数)
+    - [47.5 互斥体](#475-互斥体)
+      - [47.5.2 互斥体 API 函数](#4752-互斥体-api-函数)
+  - [第四十八章 Linux 并发与竞争实验](#第四十八章-linux-并发与竞争实验)
+    - [48.1 原子操作实验](#481-原子操作实验)
+  - [第五十一章 Linux中断实验](#第五十一章-linux中断实验)
+    - [51.1 Linux 中断简介](#511-linux-中断简介)
+      - [51.1.1 Linux 中断 API 函数](#5111-linux-中断-api-函数)
+        - [申请释放中断](#申请释放中断)
+        - [中断处理函数](#中断处理函数)
+        - [中断使能与禁止函数](#中断使能与禁止函数)
+      - [51.1.2 上半部与下半部](#5112-上半部与下半部)
+        - [下半部机制](#下半部机制)
+        - [1、软中断](#1软中断)
+        - [2、tasklet](#2tasklet)
+        - [3、工作队列](#3工作队列)
+      - [51.1.4 获取中断号](#5114-获取中断号)
+  - [第五十二章 Linux 阻塞和非阻塞 IO 实验](#第五十二章-linux-阻塞和非阻塞-io-实验)
+    - [52.1 阻塞和非阻塞 IO](#521-阻塞和非阻塞-io)
+      - [52.1.1 阻塞和非阻塞简介](#5211-阻塞和非阻塞简介)
+          - [阻塞式 IO](#阻塞式-io)
+          - [非阻塞式 IO](#非阻塞式-io)
+      - [52.1.2 等待队列](#5212-等待队列)
+        - [1、等待队列头](#1等待队列头)
+        - [2、等待队列项](#2等待队列项)
+        - [3、将队列添加/移除等待队列头](#3将队列添加移除等待队列头)
+        - [4、等待唤醒](#4等待唤醒)
+        - [5、等待事件](#5等待事件)
+      - [52.1.3 轮询](#5213-轮询)
+        - [1、select 函数](#1select-函数)
+          - [fd_set](#fd_set)
+          - [timeout](#timeout)
+        - [2、poll 函数](#2poll-函数)
+          - [pollfd 结构体](#pollfd-结构体)
+        - [3、epoll 函数](#3epoll-函数)
+  - [第五十八章 Linux INPUT子系统实验](#第五十八章-linux-input子系统实验)
+
 
 # 第四篇 ARM Linux 驱动开发篇
 &emsp;&emsp;查看设备状态总结
@@ -6,6 +83,11 @@
 ```shell
 cat /proc/devices
 ```
+2. 查看设备树节点
+```shell
+cd /proc/device-tree/
+```
+
 ## 驱动相关知识总结
 ### 1 Linux 设备号
 #### 1.1 设备号的组成
@@ -544,6 +626,138 @@ struct property {
     struct bin_attribute attr;
 };
 ```
+&emsp;&emsp;Linux 内核提供了提取属性值的 OF 函数：
+```c
+/* 
+ * 作用：查找指定的属性
+ * np: 设备节点
+ * name：属性名字
+ * lenp：属性值的字节数
+ * 返回值：找到的属性
+ */
+property *of_find_property(const struct device_node *np,
+                            const char *name,
+                            int *lenp)
+
+/* 
+ * 作用：用于获取属性中元素的数量，比如 reg 属性值是一个
+ *       数组，那么使用此函数可以获取到这个数组的大小
+ * np：设备节点
+ * proname：需要统计元素数量的属性名字
+ * elem_size：元素长度
+ * 返回值：得到的属性元素数量
+ */
+int of_property_count_elems_of_size(const struct device_node *np,
+                            const char *propname,
+                            int elem_size)
+
+/* 
+ * 作用：用于从属性中获取指定标号的 u32 类型数据值(无符号 32 位)，比如
+ *       某个属性有多个 u32 类型的值，那么就可以使用此函数来获取指定标号的数据值
+ * np：设备节点
+ * proname：要读取的属性名字
+ * index：要读取的值标号
+ * out_value：读取到的值
+ * 返回值：0：读取成功
+ *        负值：读取失败
+ *              -EINVAL：属性不存在
+ *              -ENODATA：没有要读取的数据
+ *              -EOVERFLOW：属性值列表太小
+ */
+int of_property_read_u32_index(const struct device_node *np,
+                            const char *propname,
+                            u32 index,
+                            u32 *out_value)
+
+/* 
+ * 作用：读取只有一个整型值的属性
+ * np：设备节点
+ * proname：要读取的属性名字
+ * out_value：读取到的数组值
+ * 返回值：0：读取成功
+ *        负值：读取失败
+ */
+int of_property_read_u8(const struct device_node *np,
+                            const char *propname,
+                            u8 *out_value)
+int of_property_read_u16(const struct device_node *np,
+                            const char *propname,
+                            u16 *out_value)
+int of_property_read_u32(const struct device_node *np,
+                            const char *propname,
+                            u32 *out_value)
+int of_property_read_u64(const struct device_node *np,
+                            const char *propname,
+                            u64 *out_value)
+
+/* 
+ * 作用：读取属性中的数组数据，例如可以一次读取 reg 属性中的所有数据
+ * np：设备节点
+ * proname：要读取的属性名字
+ * out_value：读取到的数组值
+ * sz：要读取的数组元素数量
+ * 返回值：0：读取成功
+ *        负值：读取失败
+ */
+int of_property_read_u8_array(const struct device_node *np,
+                                const char *propname,
+                                u8 *out_values,
+                                size_t sz)
+int of_property_read_u16_array(const struct device_node *np,
+                                const char *propname,
+                                u16 *out_values,
+                                size_t sz)
+int of_property_read_u32_array(const struct device_node *np,
+                                const char *propname,
+                                u32 *out_values,
+                                size_t sz)
+int of_property_read_u64_array(const struct device_node *np,
+                                const char *propname,
+                                u64 *out_values,
+                                size_t sz)
+
+/* 
+ * 作用：读取属性中字符串的值
+ * np：设备节点
+ * proname：要读取的属性名字
+ * out_string：读取到的字符串值
+ * 返回值：0：读取成功
+ *        负值：读取失败
+ */
+int of_property_read_string(struct device_node *np,
+                                const char *propname,
+                                const char **out_string)
+
+/* 
+ * 作用：获取 #address-cells 属性值
+ * np：设备节点
+ * 返回值：获取到的 #address-cells 属性值
+ */
+int of_n_addr_cells(struct device_node *np)
+
+/* 
+ * 作用：获取 #size-cells 属性值
+ * np：设备节点
+ * 返回值：获取到的 #size-cells 属性值
+ */
+int of_n_size_cells(struct device_node *np)
+```
+#### 43.9.4 其他常用的 OF 函数
+
+
+## 第四十五章 pinctrl 和 gpio 子系统实验
+
+
+
+
+
+
+
+
+
+
+
+
 &emsp;&emsp;让我们来看看从驱动程序代码启用这个时钟： 
 ```c
 	clk_enable(clk);
