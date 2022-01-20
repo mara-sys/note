@@ -30,6 +30,8 @@
       - [43.9.3 查找属性值的 OF 函数](#4393-查找属性值的-of-函数)
       - [43.9.4 其他常用的 OF 函数](#4394-其他常用的-of-函数)
   - [第四十五章 pinctrl 和 gpio 子系统实验](#第四十五章-pinctrl-和-gpio-子系统实验)
+      - [45.2.3 gpio 子系统 API 函数](#4523-gpio-子系统-api-函数)
+      - [45.2.5 与 gpio 相关的 OF 函数](#4525-与-gpio-相关的-of-函数)
   - [第四十七章 Linux 并发与竞争](#第四十七章-linux-并发与竞争)
     - [47.1 并发与竞争](#471-并发与竞争)
     - [47.2 原子操作](#472-原子操作)
@@ -746,8 +748,68 @@ int of_n_size_cells(struct device_node *np)
 
 
 ## 第四十五章 pinctrl 和 gpio 子系统实验
+&emsp;&emsp;这章讲的很浅，没啥用。
+#### 45.2.3 gpio 子系统 API 函数
+&emsp;&emsp;gpio 子系统提供的常用的 API 函数有下面几个：
+```c
+/* 
+ * 作用：申请一个 gpio 管脚，在使用一个 gpio 之前一定要使用此函数进行申请。
+ * gpio：要申请的 gpio 标号。使用 of_get_named_gpio 函数从设备树获取指定 gpio
+ *      属性信息，此函数会返回这个 gpio 的标号。
+ * label：给 gpio 设置个名字。
+ * 返回值：0：申请成功；其他值：申请失败。
+ */
+int gpio_request(unsigned gpio, const char *label)
 
+/* 
+ * 作用：释放申请的 gpio
+ * gpio：要释放的 gpio 标号
+ * 返回值：无
+ */
+void gpio_free(unsigned gpio)
 
+/* 
+ * 作用：设置某个 gpio 为输入
+ * gpio：要设置为输入的 gpio 标号
+ * 返回值：0：设置成功；负值：设置失败
+ */
+int gpio_direction_input(unsigned gpio)
+
+/* 
+ * 作用：设置某个 gpio 为输出，并且设置为默认输出值
+ * gpio：要设置为输出的 gpio 标号
+ * value：gpio 默认输出值
+ * 返回值：0，设置成功；负值，设置失败
+ */
+int gpio_direction_output(unsigned gpio, int value)
+
+/* 
+ * 作用：获取某个 gpio 的值
+ * gpio：要获取的 gpio 标号
+ * 返回值：非负值，得到的 gpio 值；负值，获取失败
+ */
+#define gpio_get_value __gpio_get_value
+int __gpio_get_value(unsigned gpio)
+
+/* 
+ * 作用：设置某个 gpio 的值
+ * gpio：要设置的 gpio 标号
+ * value：要设置的值
+ * 返回值：无
+ */
+#define gpio_set_value __gpio_set_value
+void __gpio_set_value(unsigned gpio, int value)
+```
+#### 45.2.5 与 gpio 相关的 OF 函数
+```c
+/* 
+ * 作用：获取设备树某个属性里面定义了几个 gpio 信息
+ * np：设备节点
+ * propname：要统计的 gpio 属性
+ * 返回值：正值：统计到的 gpio 数量；
+ */
+int of_gpio_named_count(struct device_node *np, const char *propname)
+```
 
 
 
