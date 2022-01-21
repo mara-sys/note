@@ -46,6 +46,7 @@
       - [47.5.2 互斥体 API 函数](#4752-互斥体-api-函数)
   - [第四十八章 Linux 并发与竞争实验](#第四十八章-linux-并发与竞争实验)
     - [48.1 原子操作实验](#481-原子操作实验)
+  - [第五十章 Linux 内核定时器实验](#第五十章-linux-内核定时器实验)
   - [第五十一章 Linux中断实验](#第五十一章-linux中断实验)
     - [51.1 Linux 中断简介](#511-linux-中断简介)
       - [51.1.1 Linux 中断 API 函数](#5111-linux-中断-api-函数)
@@ -809,6 +810,25 @@ void __gpio_set_value(unsigned gpio, int value)
  * 返回值：正值：统计到的 gpio 数量；
  */
 int of_gpio_named_count(struct device_node *np, const char *propname)
+
+/* 
+ * 作用：统计“gpios”这个属性的 gpio 数量，上面的函数可以统计任意属性的
+ *      gpio 信息。
+ * np：设备节点
+ * 返回值：正值：统计到的 gpio 数量；负值：失败
+ */
+int of_gpio_count(struct device_node *np)
+
+/* 
+ * 作用：获取 gpio 编号，此函数会将设备树中类似 <&gpio5 7 GPIO_ACTIVE_LOW>
+ *      属性信息转换为对应的 gpio 编号
+ * np：设备节点
+ * propname：包含要获取 gpio 信息的属性名
+ * index：gpio 索引
+ */
+int of_get_named_gpio(struct device_node *np,
+                    const char *propname,
+                    int index)
 ```
 
 
@@ -1013,6 +1033,7 @@ mutex_unlock(&lock); /* 解锁 */
 ## 第四十八章 Linux 并发与竞争实验
 ### 48.1 原子操作实验
 
+## 第五十章 Linux 内核定时器实验
 
 
 ## 第五十一章 Linux中断实验
@@ -1448,8 +1469,30 @@ int epoll_ctl(int epfd,
             int fd,
             struct epoll_event *event)
 ```
-
-
+&emsp;&emsp;op 可以设置为：
+```shell
+EPOLL_CTL_ADD   向 epfd 添加文件参数 fd 表示的描述符。
+EPOLL_CTL_MOD   修改参数 fd 的 event 事件。
+EPOLL_CTL_DEL   从 epfd 中删除 fd 描述符。
+```
+&emsp;&emsp;epoll_event 事件类型。
+```shell
+struct epoll_event {
+    uint32_t events; /* epoll 事件 */
+    epoll_data_t data; /* 用户数据 */
+};
+```
+&emsp;&emsp;其中的 events 成员变量表示要监视的事件，可选事件如下所示：
+```shell
+EPOLLIN         有数据可以读取。
+EPOLLOUT        可以写数据。
+EPOLLPRI        有紧急的数据需要读取。
+EPOLLERR        指定的文件描述符发生错误。
+EPOLLHUP        指定的文件描述符挂起。
+EPOLLET         设置 epoll 为边沿触发，默认触发模式为水平触发。
+EPOLLONESHOT    一次性的监视，当监视完成以后还需要再次监视某个 fd，
+                那么就需要将 fd 重新添加到 epoll 里面。
+```
 
 
 
