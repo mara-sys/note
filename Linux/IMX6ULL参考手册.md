@@ -495,6 +495,52 @@ Registers 也必须初始化。
 &emsp;&emsp;通道由 Arm 平台初始化，方法是使用通道 0 下载任何所需的脚本和数据值以及通道初始上下文。上下文包含 SDMA 内核寄存器的所有初始值。这包括程序计数器 (PC)，它设置为 SDMA 程序存储器中所需脚本的开头。
 &emsp;&emsp;Arm 平台通过配置 SDMA_CHNENBL、SDMA_HOSTOVR 和 SDMA_EVTOVR 寄存器来选择通道启动必须发生的触发条件。触发事件包括 Arm 平台设置 HE (SDMA_HSTART) 或硬件 DMA 请求将事件输入置为 SDMA。当所选触发器导致可运行信道中描述的条件评估为真实时，该信道可以根据其优先级与其他可运行的通道相比变得有效。
 &emsp;&emsp;要传递给缓冲区描述符或上下文中每个脚本的特定参数记录在每个脚本的软件文档中。请参阅 SDMA 脚本以获取完整的脚本文档。缓冲区描述符格式提供了缓冲区描述符格式的概述。 
+##### 46.4.8.3 初始化和脚本执行设置顺序
+&emsp;&emsp;总之，设置SDMA和运行通道脚本至少需要以下步骤。
+* 执行硬件重置。 复位后，程序 RAM、上下文 RAM、数据 RAM 和 SDMA_CHNENBLn 寄存器具有不可预测的内容。 
+* 初始化 SDMA_CHNENBLn 寄存器以将 DMA 请求事件映射到所需通道。
+* 配置 SDMA_CHNPRIn 寄存器以选择可运行通道的优先级。 通道运行需要非零优先级。 
+* 配置 SDMA_CONFIG 寄存器以选择 DMA 与 SDMA 内核时钟比率。
+* 在 Arm 平台中设置通道控制块和缓冲区描述符，以指定要使用的每个 SDMA 通道的 SDMA 程序 RAM 和通道上下文的加载。引导代码和通道脚本的参考数据结构。
+* 将SDMA_MC0PTR 寄存器配置为Arm 平台通道控制块基地址的基地址。
+* 初始化SDMA_CHNENBLn 寄存器以将DMA 请求事件映射到相关通道。参考将 DMA 请求映射到挂起的通道。
+* 配置SDMA_CHNPRIn 寄存器以设置每个要运行的通道的优先级。
+* 对于要运行的每个通道，配置 SDMA_HOSTOVR (HO) 和 SDMA_EVTOVR (EO) 寄存器以选择必须发生哪些事件（硬件和/或软件触发事件）才能使通道可运行。参考可运行通道评估。
+* 设置 SDMA_HSTART 寄存器的位 0 以设置 HE[0] 并允许通道 0 运行（假设 EO[0] 和 DO[0] 均在上一步中设置）。这将导致 SDMA 加载先前配置的程序 RAM 和通道上下文。
+* 等待通道0 完成运行。这由 SDMA_SDMA_INTR 寄存器中的 HI[0]=1 或 Arm 平台的可选中断指示。
+* 设置 SDMA_SDMA_LOCK 寄存器中的 LOCK 位以防止未经授权将数据上传到 SDMA RAM。
+* 现在可以通过根据可运行通道评估启用选定的软件或硬件触发事件来运行其他通道脚本。 
+
+#### 46.4.9 SDMA Programming Model
+&emsp;&emsp;本节介绍 SDMA RISC 引擎的编程模型，包括其处理器、内存和内部控制寄存器。
+&emsp;&emsp;所有地址都与内部 SDMA 内存映射相关，这与 Arm 平台的内存映射完全不同。 Arm 平台处理器无法访问所描述的任何硬件资源，除非这些资源在 Arm 平台内存映射和控制寄存器摘要中有所描述。
+##### 46.4.9.1 State and Registers Per Channel
+&emsp;&emsp;SDMA 可以看作是一组 32 个相同的设备，每个设备能够执行一个数据传输通道。 一次只能工作一个通道，但每个通道状态随时可用。
+&emsp;&emsp;本章列出了每个通道状态的组成部分。 
+##### 46.4.9.2 General Purpose Registers
+&emsp;&emsp;每个通道有 8 个 32 位的通用寄存器供脚本使用。 通用寄存器 0 具有循环指令的专用功能，但可用于任何目的。 
+##### 46.4.9.3 Functional Unit State
+&emsp;&emsp;每个通道上下文都有一些状态，它是功能单元的一部分。
+&emsp;&emsp;该状态的具体分配是 Burst DMA Unit Programming, Peripheral DMA Unit Programming 中描述的功能单元定义的一部分。
+&emsp;&emsp;此状态必须在上下文切换时保存/恢复。 
+###### 46.4.9.3.1 Program Counter Register (PC)
+&emsp;&emsp;PC是14位的。 由于指令宽度为 16 位，而 SDMA 中的所有存储器宽度均为 32 位，因此 PC 的低位选择 32 位字的哪一半包含当前指令。
+&emsp;&emsp;零的低位选择字的最高有效半部分。 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
