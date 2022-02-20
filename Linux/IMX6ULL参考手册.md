@@ -671,13 +671,284 @@ SDMA 中的脚本根据结构长度和通道号计算给定通道的内存偏移
 &emsp;&emsp;对于此传输，外设 DMA 也用于复制模式。
 &emsp;&emsp;除了外设 DMA 地址寄存器编程外，SDMA 脚本与外设到外设传输中描述的脚本非常相似。 
 
+### 46.8 ARM Platform Memory Map and Control Register Definitions
+&emsp;&emsp;ARM 平台通过几个接口寄存器控制 SDMA。 这些寄存器在当前部分中进行了描述。
+&emsp;&emsp;所有寄存器都使用 SDMA 时钟进行计时（这意味着 ARM 平台必须确保在要访问任何寄存器时 SDMA 时钟正在运行）。 
+#### 43.8.1 ARM platform Channel 0 Pointer (SDMAARM_MC0PTR)
+
+Address: 20E_C000h base + 0h offset = 20E_C000h  
+
+| field  | description                                                  |
+| ------ | ------------------------------------------------------------ |
+| MC0PTR | 通道 0 指针包含通道 0 控制块（引导通道）在 ARM 平台内存中的 32 位地址。 附录 A 全面描述了 SDMA 应用程序编程接口 (API)。 ARM 平台具有读/写访问权限，而 SDMA 具有只读访问权限。 |
+
+#### 43.8.2 Channel Interrupts (SDMAARM_INTR)  
+
+Address: 20E_C000h base + 4h offset = 20E_C004h  
+
+| field    | description                                                  |
+| -------- | ------------------------------------------------------------ |
+| HI[31:0] | ARM 平台中断寄存器包含 32 个 HI[i] 位。 如果设置了任何位，将导致 ARM 平台中断。 该寄存器是 ARM 平台的“可写”寄存器。 当 ARM 平台在该寄存器中设置一个位时，相应的 HI[i] 位被清除。 中断服务程序应在处理其中断时清除各个通道位，否则将导致连续中断。 SDMA负责在执行相应的done指令时设置当前通道对应的HI[i]位。 |
+
+#### 43.8.3 Channel Stop/Channel Status (SDMAARM_STOP_STAT)  
+
+Address: 20E_C000h base + 8h offset = 20E_C008h  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| HE    | 这个 32 位寄存器提供对 ARM 平台启用位的访问。 每个通道都有一位。 该寄存器是 ARM 平台的“可写”寄存器。 当 ARM 平台向该寄存器的第 i 位写入 1 时，会清除 HE[i] 和 HSTART[i] 位。 读取该寄存器会产生 HE[i] 位的当前状态。 |
+
+#### 43.8.4 Channel Start (SDMAARM_HSTART)  
+
+Address: 20E_C000h base + Ch offset = 20E_C00Ch  
+
+| field     | description                                                  |
+| --------- | ------------------------------------------------------------ |
+| HSTART_HE | HSTART_HE 寄存器为 32 位宽，每个通道一位。当一个位被写入 1 时，它启用相应的通道。使用该地址访问两个物理寄存器（HSTART 和 HE），这使 ARM 平台能够在第一次触发之前第二次触发通道 处理。<br> * 该寄存器是ARM 平台的“可写”寄存器。当相应的 HE[i] 位清零时，不能设置任何 HSTART[i] 位。<br> * 当 ARM 平台尝试通过写入 1 来设置 HSTART[i] 位（如果相应的 HE[i] 位清零），HSTART[i] 寄存器中的位将保持清零，而 HE[i] 位将被设置。<br> * 如果相应的HE[i] 位已经设置，HSTART[i] 位将被设置。下次 SDMA 通道 i 尝试通过 done 指令清除 HE[i] 位时，HSTART[i] 寄存器中的位将被清除，并且 HE[i] 位将采用 HSTART 的旧值[我咬。<br> * 读取该寄存器产生HSTART[i] 位的当前状态。这种机制使 ARM 平台能够为每个通道流水线化两个 HSTART 命令。 |
+
+#### 43.8.5 Channel Event Override (SDMAARM_EVTOVR)  
+
+Address: 20E_C000h base + 10h offset = 20E_C010h  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| EO    | 通道事件覆盖寄存器包含 32 个 EO[i] 位。 在该寄存器中设置一个位会导致 SDMA 在调度相应通道时忽略 DMA 请求。 |
+
+#### 43.8.6 Channel BP Override (SDMAARM_DSPOVR)  
+
+Address: 20E_C000h base + 14h offset = 20E_C014h  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| DO    | 该寄存器是保留的。 所有 DO 位都应设置为复位值 1。设置为 0 将阻止 SDMA 通道根据可运行通道评估中描述的条件启动。<br>0 reserved<br>1 reset value |
+
+#### 43.8.7 Channel ARM platform Override (SDMAARM_HOSTOVR)  
+
+Address: 20E_C000h base + 18h offset = 20E_C018h  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| HO    | 通道 ARM 平台覆盖寄存器包含 32 个 HO[i] 位。 在此寄存器中设置的位会导致 SDMA 在调度相应通道时忽略 ARM 平台启用位 (HE)。 |
+
+#### 43.8.8 Channel Event Pending (SDMAARM_EVTPEND)  
+
+Address: 20E_C000h base + 1Ch offset = 20E_C01Ch  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| EP    | 通道事件挂起寄存器包含 32 个 EP[i] 位。 读取该寄存器使 ARM 平台能够确定在接收到 DMA 请求后哪些通道处于待处理状态。<br> • 设置该寄存器中的某个位会导致 SDMA 重新评估调度，就像映射到该通道上的 DMA 请求已经发生一样。 这对于启动通道很有用，以便在等待第一个请求之前完成初始化。 调度器还可以根据接收到的 DMA 请求设置 EVTPEND 寄存器中的位。 <br>• EP[i] 位可以在运行通道i 脚本时通过done 指令清零。 这是一种“writeones”机制：写入“0”不会清除相应的位。 |
+
+#### 43.8.9 Reset Register (SDMAARM_RESET)  
+
+Address: 20E_C000h base + 24h offset = 20E_C024h  
+
+| field         | description                                                  |
+| ------------- | ------------------------------------------------------------ |
+| 31–2 Reserved |                                                              |
+| 1 RESCHED     | 设置时，该位强制 SDMA 重新调度，就好像脚本已执行完成指令一样。 这使 ARM 平台能够通过 STOP 寄存器清除其 HE[i] 位，然后通过 RESCHED 位强制重新调度，从而从通道上的失控脚本中恢复。 RESCHED 位在上下文切换开始时被清除。 |
+| 0 RESET       | 置位时，该位使 SDMA 保持在软件复位中。 内部复位信号保持低电平 16 个周期； 当内部复位信号上升时，RESET 位自动清零。 |
+
+#### 43.8.10 DMA Request Error Register (SDMAARM_EVTERR)  
+
+Address: 20E_C000h base + 28h offset = 20E_C028h  
+
+| field  | description                                                  |
+| ------ | ------------------------------------------------------------ |
+| CHNERR | 当检测到传入的 DMA 请求并触发已挂起或正在服务的通道时，SDMA 使用此寄存器向 ARM 平台发出警告。 这可能意味着该通道的数据溢出。 <br>• 如果在INTRMASK 寄存器中设置了相应的通道位，则会向ARM 平台发送中断。<br> • 这是调度程序的“写一”寄存器。 它只能设置标志。 当 ARM 平台读取寄存器时或在 SDMA 复位期间，这些标志被清除。 <br>• 当通过相应的输入引脚接收到触发通道i 的DMA 请求并且EP[i] 位已经置位时，CHNERR[i] 位被置位； 如果 ARM 平台尝试设置 EP[i] 位，则 EVTERR[i] 位不受影响，而 EP[i] 位已设置。 |
+
+#### 43.8.11 Channel ARM platform Interrupt Mask (SDMAARM_INTRMASK)  
+
+Address: 20E_C000h base + 2Ch offset = 20E_C02Ch  
+
+| field  | description                                                  |
+| ------ | ------------------------------------------------------------ |
+| HIMASK | 中断屏蔽寄存器包含 32 个中断生成屏蔽位。 如果设置了 HIMASK[i] 位，则在通道 i 上检测到 DMA 请求错误（例如，设置 EVTERR[i]）时，将设置 HI[i] 位并向 ARM 平台发送中断。 |
+
+#### 43.8.12 Schedule Status (SDMAARM_PSW)  
+
+Address: 20E_C000h base + 30h offset = 20E_C030h  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–16 Reserved |                                                              |
+| 15–13 NCP[2:0] | Next Channel Priority 给出下一个待处理的通道优先级。 当优先级为0时，表示没有挂起的通道，NCR值没有意义。<br>0 No running channel<br>1 Active channel priority |
+| 12–8 NCR[4:0]  | 下一个通道寄存器指示具有最高优先级的下一个调度的未决通道的编号。 |
+| 7–4 CCP[2:0]   | 当前通道优先级表示当前活动通道的优先级。 当优先级为0时，没有通道在运行：SDMA空闲，CCR值没有意义。 在 SDMA 完成通道运行并进入休眠状态的情况下，CCP 将指示前一个运行通道的优先级。<br>0 No running channel<br>1 Active channel priority |
+| CCR[4:0]       | 当前通道寄存器指示 SDMA 正在执行的通道号。 SDMA。 在 SDMA 完成运行通道并进入休眠状态的情况下，CCR 将指示之前运行的通道。 |
+
+#### 43.8.13 DMA Request Error Register (SDMAARM_EVTERRDBG)  
+
+Address: 20E_C000h base + 34h offset = 20E_C034h  
+
+| field  | description                                                  |
+| ------ | ------------------------------------------------------------ |
+| CHNERR | 该寄存器与 EVTERR 相同，只是读取它不会清除其内容。 该地址用于调试模式。 ARM 平台 OnCE 可以检查这个寄存器值而不修改它。 |
+
+#### 43.8.14 Configuration Register (SDMAARM_CONFIG)  
+
+Address: 20E_C000h base + 38h offset = 20E_C038h  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–13 Reserved |                                                              |
+| 12 DSPDMA      | 该位的功能是保留的，应该配置为零。<br>0 reset value<br>1 reserved |
+| 11 RTDOBS      | 指示是否使用实时调试引脚：默认情况下它们不会切换以降低功耗。<br>0 RTD pins disabled<br>1 RTD pins enabled |
+| 10–5 Reserved  |                                                              |
+| 4 ACR          | ARM 平台 DMA/SDMA 核心时钟比率。 选择 ARM 平台 DMA 接口（突发 DMA 和外设 DMA）与内部 SDMA 内核时钟之间的时钟比率。 频率选择由芯片时钟控制器单独确定。 该位必须与生成 SDMA 中使用的时钟的芯片时钟控制器的配置相匹配。<br>0 ARM 平台 DMA 接口频率等于核心频率的两倍<br>1 ARM平台DMA接口频率等于内核频率 |
+| 3–2 Reserved   |                                                              |
+| CSM            | 选择上下文切换模式。 ARM 平台具有读/写访问权限。 SDMA 无法修改该寄存器。 重置时的值为 3，默认选择动态上下文切换。 该寄存器可以随时修改，但新的上下文切换配置只会在下一个恢复阶段开始时考虑。<br/> 注意：复位后第一次调用 SDMA 的通道 0 引导加载脚本应使用静态上下文切换模式，以确保通道 0 的上下文 RAM 在通道保存阶段初始化。 通道 0 运行一次后，可以使用任何动态上下文模式。<br/>0 static<br/>1 dynamic low power<br/>2 dynamic with no loop<br/>3 dynamic |
+
+#### 43.8.15 SDMA LOCK (SDMAARM_SDMA_LOCK)  
+
+Address: 20E_C000h base + 3Ch offset = 20E_C03Ch  
+
+| field              | description                                                  |
+| ------------------ | ------------------------------------------------------------ |
+| 31–2 Reserved      |                                                              |
+| 1 SRESET_LOCK_ CLR | SRESET_LOCK_CLR 位确定 LOCK 位是否在由写入 RESET 寄存器触发的软件复位时被清除。 如果 LOCK=1，则无法更改该位。 SREST_LOCK_CLR 由清除 LOCK 位的条件清除。<br>0 软件复位不会清除 LOCK 位。<br>1 软件复位清除 LOCK 位。 |
+| 0 LOCK             | LOCK 位用于限制通过 ROM 通道零脚本和通过 ARM 平台控制下的 OnCE 接口更新 SDMA 脚本内存的访问。<br>LOCK 位被设置：<br>• SDMA_LOCK、ONCE_ENB、CH0ADDR 和ILLINSTADDR 寄存器不能被写入。 可以读取这些寄存器，但忽略写入。 <br>• 在ROM 或RAM 之外执行的SDMA 软件可能会检查LOCK 寄存器锁定状态寄存器(SDMACORE_SDMA_LOCK) 中的LOCK 位，以确定是否允许某些操作，例如上传新脚本。 <br>一旦 LOCK 位设置为 1，只有复位才能清除它。 LOCK 位通过硬件复位清零。 仅当设置了 SRESET_LOCK_CLR 时，LOCK 才由软件复位清除。 <br>0 锁定解除。 <br>1 锁定启用。 |
+
+#### 43.8.16 OnCE Enable (SDMAARM_ONCE_ENB)  
+
+Address: 20E_C000h base + 40h offset = 20E_C040h  
+
+| field         | description                                                  |
+| ------------- | ------------------------------------------------------------ |
+| 31–1 Reserved |                                                              |
+| 0 ENB         | OnCE Enable 寄存器选择 OnCE 控制源： 清零 (0) 时，通过 JTAG 接口访问 OnCE 寄存器； 当设置为 (1) 时，ARM 平台可以通过如下所述的地址访问 OnCE 寄存器。 <br>• 复位后，通过JTAG 接口访问OnCE 寄存器。 <br>• 将 1 写入 ENB 使 ARM 平台能够像访问任何其他 SDMA 控制寄存器一样访问 ONCE_*。<br>• 清零(0) 时，不能写入所有ONCE_xxx 寄存器。 <br>如果设置了 SDMA_LOCK 寄存器中的 LOCK 位，则无法更改 ENB 的值。 |
+
+#### 43.8.17 OnCE Data Register (SDMAARM_ONCE_DATA)  
+
+Address: 20E_C000h base + 44h offset = 20E_C044h  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| DATA  | OnCE JTAG 控制器的数据寄存器。 有关此寄存器的信息，请参阅 OnCE 和实时调试。 |
+
+#### 43.8.18 OnCE Instruction Register (SDMAARM_ONCE_INSTR)  
+
+Address: 20E_C000h base + 48h offset = 20E_C048h  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–16 Reserved |                                                              |
+| INSTR          | OnCE JTAG 控制器的指令寄存器。 有关此寄存器的信息，请参阅 OnCE 和实时调试。 |
+
+#### 43.8.19 OnCE Status Register (SDMAARM_ONCE_STAT)  
+
+Address: 20E_C000h base + 4Ch offset = 20E_C04Ch  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–16 Reserved |                                                              |
+| 15–12 PST[3:0] | 处理器状态位反映 SDMA RISC 引擎的状态。其状态如下：<br> • “程序”状态是通常的指令执行周期。 <br>• 当数据总线（ld 或st）上的加载或存储期间存在等待状态时，插入“数据”状态。<br> • “流的变化”状态是任何指令的第二个周期，它打破了序列 指令（跳转和通道切换指令）。 <br>• 当错误导致硬件循环退出时，使用“循环中的流变化”状态。 <br>• “调试”状态意味着 SDMA 处于调试模式。 <br>• 当加载或存储功能单元总线（ldf 或stf）期间存在等待状态时，插入“功能单元”状态。<br> • 在“睡眠”模式下，没有脚本正在运行（这是 RISC 引擎空闲状态）。 “重置后”略有不同，因为触发通道时不会发生上下文恢复阶段：将执行位于地址 0 的脚本（启动操作）。 <br>• “in Sleep”状态与上述相同，只是它们没有任何对应的通道：它们在复位后进入调试模式时使用。原因是离开调试模式时需要返回到“Sleep after Reset”状态。<br>0 Program <br/>1 Data <br/>2 Change of Flow <br/>3 Change of Flow in Loop <br/>4 Debug <br/>5 Functional Unit <br/>6 Sleep <br/>7 Save <br/>8 Program in Sleep <br/>9 Data in Sleep <br/>10 Change of Flow in Sleep <br/>11 Change Flow in Loop in Sleep <br/>12 Debug in Sleep <br/>13 Functional Unit in Sleep <br/>14 Sleep after Reset <br/>15 Restore |
+| 11 RCV         | 每次对实时缓冲区 (RTB) 进行写访问后，都会设置 RCV 位。 该位在执行 rbuffer 命令和 JTAG 复位后清零。 |
+| 10 EDR         | 当 SDMA 在外部调试请求后进入调试模式时，会引发此标志。       |
+| 9 ODR          | 当 SDMA 在 OnCE 调试请求后进入调试模式时，会引发此标志。     |
+| 8 SWB          | 当 SDMA 在软件断点后进入调试模式时，会引发此标志。           |
+| 7 MST          | 当从 ARM 平台外设接口控制 OnCE 时，会引发此标志。<br/>0 JTAG 接口控制 OnCE。 <br/>1 ARM 平台外设接口控制 OnCE。 |
+| 6–3 Reserved   |                                                              |
+| ECDR           | 事件单元调试请求。 如果调试请求来自事件单元，则进入调试模式的原因由 EDR 位给出。 如果 EDR 的所有三个位都被复位，则它不会生成任何调试请求。 如果单元确实生成了调试请求，则至少设置了一个 EDR 位（编码的含义如下所示）。 EDR 位的编码有助于更准确地找出生成调试请求的原因。 为 addra_cond、addrb_cond 和 data_cond 条件的特定组合生成来自事件单元的调试请求。 这些字段的值由 EDR 位给出。<br>0 1 matched addra_cond <br/>1 1 matched addrb_cond <br/>2 1 matched data_cond |
+
+#### 43.8.20 OnCE Command Register (SDMAARM_ONCE_CMD)  
+
+Address: 20E_C000h base + 50h offset = 20E_C050h  
+
+| field         | description                                                  |
+| ------------- | ------------------------------------------------------------ |
+| 31–4 Reserved |                                                              |
+| CMD           | 写入该寄存器将导致 OnCE 执行写入的命令。 需要时，在将命令写入该寄存器之前，应为 ONCE_DATA 和 ONCE_INSTR 寄存器加载正确的值。 有关 OnCE 命令及其用法的列表，请参阅 OnCE 和实时调试。<br>0 rstatus <br/>1 dmov <br/>2 exec_once <br/>3 run_core <br/>4 exec_core <br/>5 debug_rqst <br/>6 rbuffer |
+
+#### 43.8.21 Illegal Instruction Trap Address (SDMAARM_ILLINSTADDR)  
+
+Address: 20E_C000h base + 58h offset = 20E_C058h  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–14 Reserved |                                                              |
+| ILLINSTADDR    | 非法指令陷阱地址是执行非法指令时 SDMA 跳转的地址。 复位后为 0x0001。 <br>如果设置了 SDMA_LOCK 寄存器中的 LOCK 位，则不能更改 ILLINSTADDR 的值。 |
+
+#### 43.8.22 Channel 0 Boot Address (SDMAARM_CHN0ADDR)  
+
+Address: 20E_C000h base + 5Ch offset = 20E_C05Ch  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–15 Reserved |                                                              |
+| 14 SMSZ        | 第 14 位（暂存存储器大小）确定在每个通道上下文后暂存存储器是否必须可用。 复位后等于 0，即为每个通道定义了 24 个字的 RAM 空间。 所有这个区域都存储了通道上下文。 通过设置该位，为每个通道上下文保留 32 个字，这提供了八个额外的字，通道脚本可以使用这些字来存储任何类型的数据。 上下文切换机制永远不会删除这些单词。 如果设置了 SDMA_LOCK 寄存器中的 LOCK 位，则 SMSZ 的值不能更改。<br>0 24 words per context <br>1 32 words per context |
+| CHN0ADDR       | 这个 14 位寄存器由 SDMA 的引导代码使用。 复位后，它指向 ROM 中的标准引导例程（通道 0 例程）。 通过更改此地址，您可以使用自己的例程执行引导序列。 引导代码的第一条指令获取该寄存器的内容（它也映射到 SDMA 内存空间）并跳转到给定地址。 复位值为 0x0050（十进制 80）。 如果设置了 SDMA_LOCK 寄存器中的 LOCK 位，则无法更改 CHN0ADDR 的值。 |
+
+#### 43.8.23 DMA Requests (SDMAARM_EVT_MIRROR)  
+
+| field  | description                                                  |
+| ------ | ------------------------------------------------------------ |
+| EVENTS | 该寄存器反映 SDMA 接收到的事件 31-0 的 DMA 请求。 ARM 平台和 SDMA 具有只读访问权限。 32 个 DMA 请求事件中的每一个都与一个位相关联。 在调试生成 DMA 请求的模块期间，此信息可能很有用。 EVT_MIRROR 寄存器在读取访问后被清除。 <br/>0 DMA 请求事件未挂起 <br/>1 个 DMA 请求事件挂起。 |
+
+#### 43.8.24 DMA Requests 2 (SDMAARM_EVT_MIRROR2)  
+
+Address: 20E_C000h base + 64h offset = 20E_C064h  
+
+| field          | description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| 31–16 Reserved |                                                              |
+| EVENTS[47:32]  | 该寄存器反映了 SDMA 接收到的事件 47-32 的 DMA 请求。 ARM 平台和 SDMA 具有只读访问权限。 每个 DMA 请求事件都有一个位。 在调试生成 DMA 请求的模块期间，此信息可能很有用。 EVT_MIRROR2 寄存器在读取访问后被清除。<br>0 DMA 请求事件未挂起<br>1 DMA 请求事件未挂起 |
+
+#### 43.8.25 Cross-Trigger Events Configuration Register 1 (SDMAARM_XTRIG_CONF1)  
+
+Address: 20E_C000h base + 70h offset = 20E_C070h  
+
+| field           | description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| 31 Reserved     |                                                              |
+| 30 CNF3         | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定事件线脉冲是由接收 DMA 请求还是由开始执行通道脚本生成的。 <br>0 通道 <br>1  DMA 请求 |
+| 29–24 NUM3[5:0] | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+| 23 Reserved     |                                                              |
+| 22 CNF2         | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定是通过接收 DMA 请求还是通过启动通道脚本执行来生成事件线脉冲。<br>0 channel<br>1 DMA 请求 |
+| 21–16 NUM2[5:0] | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+| 15 Reserved     |                                                              |
+| 14 CNF1         | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定是通过接收 DMA 请求还是通过启动通道脚本执行来生成事件线脉冲。<br/>0 channel<br/>1 DMA 请求 |
+| 13–8 NUM1[5:0]  | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+| 7 Reserved      |                                                              |
+| 6 CNF0          | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定是通过接收 DMA 请求还是通过启动通道脚本执行来生成事件线脉冲。<br/>0 channel<br/>1 DMA 请求 |
+| NUM0[5:0]       | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+
+#### 43.8.26 Cross-Trigger Events Configuration Register 2 (SDMAARM_XTRIG_CONF2)  
+
+Address: 20E_C000h base + 74h offset = 20E_C074h  
+
+| field           | description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| 31 Reserved     |                                                              |
+| 30 CNF7         | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定事件线脉冲是由接收 DMA 请求还是由开始执行通道脚本生成的。 <br/>0 通道 <br/>1  DMA 请求 |
+| 29–24 NUM7[5:0] | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+| 23 Reserved     |                                                              |
+| 22 CNF6         | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定事件线脉冲是由接收 DMA 请求还是由开始执行通道脚本生成的。 <br/>0 通道 <br/>1  DMA 请求 |
+| 21–16 NUM6[5:0] | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+| 15 Reserved     |                                                              |
+| 14 CNF5         | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定事件线脉冲是由接收 DMA 请求还是由开始执行通道脚本生成的。 <br/>0 通道 <br/>1  DMA 请求 |
+| 13–8 NUM5[5:0]  | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
+| 7 Reserved      |                                                              |
+| 6 CNF4          | 连接到交叉触发器的 SDMA 事件行号 i 的配置。 它确定事件线脉冲是由接收 DMA 请求还是由开始执行通道脚本生成的。 <br/>0 通道 <br/>1  DMA 请求 |
+| NUM4[5:0]       | 包含触发交叉触发事件行号 i 上的脉冲的 DMA 请求或通道的编号。 |
 
 
 
+#### 43.8.27 Channel Priority Registers (SDMAARM_SDMA_CHNPRIn)  
 
+43.8.27 Channel Priority Registers (SDMAARM_SDMA_CHNPRIn)  
 
+| field         | description                                                  |
+| ------------- | ------------------------------------------------------------ |
+| 31–3 Reserved |                                                              |
+| CHNPRIn       | 这包含通道号 n 的优先级。 有用的值在 1 到 7 之间； 0 由 SDMA 硬件保留，以确定何时没有挂起的通道。 复位值为 0，防止通道启动。 |
 
+#### 43.8.28 Channel Enable RAM (SDMAARM_CHNENBLn)  
 
+Address: 20E_C000h base + 200h offset + (4d × i), where i=0d to 47d  
+
+| field | description                                                  |
+| ----- | ------------------------------------------------------------ |
+| ENBLn | This 32-bit value selects the channels that are triggered by the DMA request number n. If ENBLn[i] is set to 1, bit EP[i] will be set when the DMA request n is received. These 48 32-bit registers are physically located in a RAM, with no known reset value. It is thus essential for the ARM platform to program them before any DMA request is triggered to the SDMA, otherwise an unpredictable combination of channels may be started. |
 
 
 
