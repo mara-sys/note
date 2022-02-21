@@ -82,6 +82,7 @@
       - [54.1.1 驱动的分隔与分离](#5411-驱动的分隔与分离)
     - [54.2 platform 平台驱动模型简介](#542-platform-平台驱动模型简介)
       - [54.2.1 platform 总线](#5421-platform-总线)
+      - [54.2.2 platform 驱动](#5422-platform-驱动)
   - [第五十八章 Linux INPUT子系统实验](#第五十八章-linux-input子系统实验)
 
 
@@ -1584,6 +1585,81 @@ static int platform_match(struct device *dev, struct device_driver *drv)
 &emsp;&emsp;第二种匹配方式， ACPI 匹配方式。
 &emsp;&emsp;第三种匹配方式， id_table 匹配，每个 platform_driver 结构体有一个 id_table成员变量，顾名思义，保存了很多 id 信息。这些 id 信息存放着这个 platformd 驱动所支持的驱动类型。
 &emsp;&emsp;第四种匹配方式，如果第三种匹配方式的 id_table 不存在的话就直接比较驱动和设备的 name 字段，看看是不是相等，如果相等的话就匹配成功。对于支持设备树的 Linux 版本号，一般设备驱动为了兼容性都支持设备树和无设备树两种匹配方式。也就是第一种匹配方式一般都会存在，第三种和第四种只要存在一种就可以，一般用的最多的还是第四种，也就是直接比较驱动和设备的 name 字段，毕竟这种方式最简单了。
+#### 54.2.2 platform 驱动
+&emsp;&emsp;platform_driver 结构体表示 platform 驱动，定义如下：
+```c
+struct platform_driver {
+    int (*probe)(struct platform_device *);
+    int (*remove)(struct platform_device *);
+    void (*shutdown)(struct platform_device *);
+    int (*suspend)(struct platform_device *, pm_message_t state)
+    int (*resume)(struct platform_device *);
+    struct device_driver driver;
+    const struct platform_device_id *id_table;
+    bool prevent_deferred_probe;
+};
+```
+&emsp;&emsp;probe 函数，当驱动与设备匹配成功以后 probe 函数就会执行，非常重要的函数！！一般驱动的提供者会编写，如果自己要编写一个全新的驱动，那么 probe 就需要自行实现。
+&emsp;&emsp;driver 成员，为 device_driver 结构体变量， Linux 内核里面大量使用到了面向对象的思维， **device_driver 相当于基类，提供了最基础的驱动框架。 plaform_driver 继承了这个基类**，然后在此基础上又添加了一些特有的成员变量。
+&emsp;&emsp;**id_table 表**，也就是我们上一小节讲解 platform 总线匹配驱动和设备的时候采用的**第三种方法**， id_table 是个表(也就是数组)，每个元素的类型为 **platform_device_id**，platform_device_id 结构体内容如下：
+```c
+struct platform_device_id {
+    char name[PLATFORM_NAME_SIZE];
+    kernel_ulong_t driver_data;
+};
+```
+&emsp;&emsp;device_driver 结构体定义在 include/linux/device.h，device_driver 结构体内容如下：
+```c
+struct device_driver {
+    const char *name;
+    struct bus_type *bus;
+
+    struct module *owner;
+    const char *mod_name; /* used for built-in modules */
+
+    bool suppress_bind_attrs; /* disables bind/unbind via sysfs */
+
+    const struct of_device_id *of_match_table;
+    const struct acpi_device_id *acpi_match_table;
+
+    int (*probe) (struct device *dev);
+    int (*remove) (struct device *dev);
+    void (*shutdown) (struct device *dev);
+    int (*suspend) (struct device *dev, pm_message_t state);
+    int (*resume) (struct device *dev);
+    const struct attribute_group **groups;
+
+    const struct dev_pm_ops *pm;
+
+    struct driver_private *p;
+};
+```
+&emsp;&emsp;of_match_table 就是采用设备树的时候驱动使用的匹配表，即**第一种方法**。同样是数组，每个匹配项都为 of_device_id 结构体类型，此结构体定义在文件 include/linux/mod_devicetable.h 中，内容如下：
+```c
+struct of_device_id {
+    char name[32];
+    char type[32];
+    char compatible[128];
+    const void *data;
+};
+```
+&emsp;&emsp;compatible 非常重要，因为对于设备树而言，就是通过设备节点的 compatible 属性值和 of_match_table 中每个项目的 compatible 成员变量进行比较，如果有相等的就表示设备和此驱动匹配成功。
+&emsp;&emsp;在编写 platform 驱动的时候，首先定义一个 platform_driver 结构体变量，然后实现结构体中的各个成员变量，重点是实现匹配方法以及 probe 函数。当驱动和设备匹配成功以后 probe函数就会执行，具体的驱动程序在 probe 函数里面编写，比如字符设备驱动等等。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
