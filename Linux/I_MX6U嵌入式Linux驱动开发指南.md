@@ -77,6 +77,11 @@
         - [2、poll 函数](#2poll-函数)
           - [pollfd 结构体](#pollfd-结构体)
         - [3、epoll 函数](#3epoll-函数)
+  - [第五十四章 platform 设备驱动实验](#第五十四章-platform-设备驱动实验)
+    - [54.1 Linux 驱动的分离与分层](#541-linux-驱动的分离与分层)
+      - [54.1.1 驱动的分隔与分离](#5411-驱动的分隔与分离)
+    - [54.2 platform 平台驱动模型简介](#542-platform-平台驱动模型简介)
+      - [54.2.1 platform 总线](#5421-platform-总线)
   - [第五十八章 Linux INPUT子系统实验](#第五十八章-linux-input子系统实验)
 
 
@@ -1496,12 +1501,89 @@ EPOLLONESHOT    一次性的监视，当监视完成以后还需要再次监视�
 
 
 
+## 第五十四章 platform 设备驱动实验
+### 54.1 Linux 驱动的分离与分层
+#### 54.1.1 驱动的分隔与分离
+![总线驱动设备模型](./I_MX6U嵌入式Linux驱动开发指南_images/540101_platform_model.png)  
+&emsp;&emsp;当我们向系统注册一个驱动的时候，总线就会在右侧的设备中查找，看看有没有与之匹配的设备，如果有的话就将两者联系起来。同样的，当向系统中注册一个设备的时候，总线就会在左侧的驱动中查找有没有与之匹配的设备，有的话也联系起来。
+### 54.2 platform 平台驱动模型简介
+&emsp;&emsp;在 SOC 中有些外设是没有总线这个概念的，但是又要使用总线、驱动和设备模型，为解决此问题，Linux 提出了 platform 这个虚拟总线，相应的就有 platform_driver 和 platform_device。
+#### 54.2.1 platform 总线
+&emsp;&emsp;Linux系统内核使用bus_type结构体表示总线，此结构体定义在文件include/linux/device.h，
+&emsp;&emsp;bus_type 结构体内容如下：
+```c
+struct bus_type {
+	const char		*name;
+	const char		*dev_name;
+	struct device		*dev_root;
+	struct device_attribute	*dev_attrs;	/* use dev_groups instead */
+	const struct attribute_group **bus_groups;
+	const struct attribute_group **dev_groups;
+	const struct attribute_group **drv_groups;
 
+	int (*match)(struct device *dev, struct device_driver *drv);
+	int (*uevent)(struct device *dev, struct kobj_uevent_env *env);
+	int (*probe)(struct device *dev);
+	int (*remove)(struct device *dev);
+	void (*shutdown)(struct device *dev);
 
+	int (*online)(struct device *dev);
+	int (*offline)(struct device *dev);
 
+	int (*suspend)(struct device *dev, pm_message_t state);
+	int (*resume)(struct device *dev);
 
+	const struct dev_pm_ops *pm;
 
+	const struct iommu_ops *iommu_ops;
 
+	struct subsys_private *p;
+	struct lock_class_key lock_key;
+};
+```
+&emsp;&emsp;match 函数就是完成设备和驱动之间匹配的，总线就是使用 match 函数来根据注册的设备来查找对应的驱动，或者根据注册的驱动来查找相应的设备，因此每一条总线都必须实现此函数。match 函数有两个参数：dev 和 drv，这两个参数分别为 device 和 device_driver 类型，也就是设备和驱动。
+&emsp;&emsp;platform 总线是 bus_type 的一个具体实例，定义在文件 drivers/base/platform.c， platform 总线定义如下：
+```c
+struct bus_type platform_bus_type = {
+    .name = "platform",
+    .dev_groups = platform_dev_groups,
+    .match = platform_match,
+    .uevent = platform_uevent,
+    .pm = &platform_dev_pm_ops,
+};
+```
+&emsp;&emsp;platform_bus_type 就是 platform 平台总线，其中 platform_match 就是匹配函数。我们来看一下驱动和设备是如何匹配的，函数内容如下所示：
+```c
+static int platform_match(struct device *dev, struct device_driver *drv)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_driver *pdrv = to_platform_driver(drv);
+
+	/* When driver_override is set, only bind to the matching driver */
+	if (pdev->driver_override)
+		return !strcmp(pdev->driver_override, drv->name);
+
+	/* Attempt an OF style match first */
+	if (of_driver_match_device(dev, drv))
+		return 1;
+
+	/* Then try ACPI style match */
+	if (acpi_driver_match_device(dev, drv))
+		return 1;
+
+	/* Then try to match against the id table */
+	if (pdrv->id_table)
+		return platform_match_id(pdrv->id_table, pdev) != NULL;
+
+	/* fall-back to driver name match */
+	return (strcmp(pdev->name, drv->name) == 0);
+}
+```
+&emsp;&emsp;驱动和设备的匹配有四种方法，我们依次来看一下：
+&emsp;&emsp;第一种匹配方式，OF 类型的匹配，也就是设备树采用的匹配方式，of_driver_match_device 函数定义在文件 include/linux/of_device.h 中。 device_driver 结构体(表示设备驱动)中有个名为of_match_table的成员变量，此成员变量保存着驱动的compatible匹配表，设备树中的每个设备节点的 compatible 属性会和 of_match_table 表中的所有成员比较，查看是否有相同的条目，如果有的话就表示设备和此驱动匹配，设备和驱动匹配成功以后 probe 函数就会执行。
+&emsp;&emsp;第二种匹配方式， ACPI 匹配方式。
+&emsp;&emsp;第三种匹配方式， id_table 匹配，每个 platform_driver 结构体有一个 id_table成员变量，顾名思义，保存了很多 id 信息。这些 id 信息存放着这个 platformd 驱动所支持的驱动类型。
+&emsp;&emsp;第四种匹配方式，如果第三种匹配方式的 id_table 不存在的话就直接比较驱动和设备的 name 字段，看看是不是相等，如果相等的话就匹配成功。对于支持设备树的 Linux 版本号，一般设备驱动为了兼容性都支持设备树和无设备树两种匹配方式。也就是第一种匹配方式一般都会存在，第三种和第四种只要存在一种就可以，一般用的最多的还是第四种，也就是直接比较驱动和设备的 name 字段，毕竟这种方式最简单了。
 
 
 
