@@ -39,6 +39,13 @@
     - [8.4.2 代码分析](#842-代码分析)
   - [8.5 一些变量初始化的定义](#85-一些变量初始化的定义)
     - [8.5.1 uninitialized_var](#851-uninitialized_var)
+  - [8.6 module_param](#86-module_param)
+          - [1 module_param()](#1-module_param)
+          - [2 module_param() 支持的类型](#2-module_param-支持的类型)
+          - [3 perm 参数](#3-perm-参数)
+          - [4 对参数的描述方法](#4-对参数的描述方法)
+          - [5 module_param_named()](#5-module_param_named)
+          - [6 其他衍生的方法](#6-其他衍生的方法)
 - [九、 高精度定时器hrtimer的使用](#九-高精度定时器hrtimer的使用)
   - [9.1 使用](#91-使用)
     - [9.1.1 数据结构](#911-数据结构)
@@ -1039,6 +1046,123 @@ case RTC_UIE_ON:
 ```c
 #define uninitialized_var(x) x = x
 ```
+
+## 8.6 module_param
+###### 1 module_param()
+&emsp;&emsp;module_param() 宏定义在`include/linux/moduleparam.h`文件中，定义如下：
+```c
+/** 
+ * name：既是用户看到的参数名，又是模块内接收参数的变量
+ * type：表示参数的类型
+ * perm：指定了在 sysfs 中相应文件的访问权限
+ */
+#define module_param(name, type, perm)
+        module_param_named(name, name, type, perm)
+```
+&emsp;&emsp;这个宏定义应当放在任何函数之外，典型的是出现在源文件的前面，例如`dmatest.c`中
+```c
+static unsigned int test_buf_size = 16384;
+module_param(test_buf_size, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
+```
+###### 2 module_param() 支持的类型
+* bool, invbool：布尔型的值，invbool 反转了值
+* charp：一个字符指针值，内存为用户提供的字串分配。
+* int, long, short
+* uint, ulong, ushort：基本的变长整型值，以 u 开头的是无符号值
+
+###### 3 perm 参数
+&emsp;&emsp;在`include/linux/stat.h`中给出定义
+```c
+/*include/linux/stat.h */
+
+ #ifndef _LINUX_STAT_H
+ #define _LINUX_STAT_H
+ 
+
+ #include <asm/stat.h>
+ #include <uapi/linux/stat.h>
+
+ #define S_IRWXUGO       (S_IRWXU|S_IRWXG|S_IRWXO)
+ #define S_IALLUGO       (S_ISUID|S_ISGID|S_ISVTX|S_IRWXUGO)
+ #define S_IRUGO         (S_IRUSR|S_IRGRP|S_IROTH)
+ #define S_IWUGO         (S_IWUSR|S_IWGRP|S_IWOTH)
+ #define S_IXUGO         (S_IXUSR|S_IXGRP|S_IXOTH)
+ 
+ #define UTIME_NOW       ((1l << 30) - 1l)
+ #define UTIME_OMIT      ((1l << 30) - 2l)
+
+/*uapi/linux/stat.h */
+
+ #ifndef _UAPI_LINUX_STAT_H
+ #define _UAPI_LINUX_STAT_H
+ 
+ 
+ #if defined(__KERNEL__) || !defined(__GLIBC__) || (__GLIBC__ < 2)
+ 
+ #define S_IFMT  00170000
+ #define S_IFSOCK 0140000
+ #define S_IFLNK  0120000
+ #define S_IFREG  0100000
+ #define S_IFBLK  0060000
+ #define S_IFDIR  0040000
+ #define S_IFCHR  0020000
+ #define S_IFIFO  0010000
+ #define S_ISUID  0004000
+ #define S_ISGID  0002000
+ #define S_ISVTX  0001000
+ 
+ #define S_ISLNK(m)      (((m) & S_IFMT) == S_IFLNK)
+ #define S_ISREG(m)      (((m) & S_IFMT) == S_IFREG)
+ #define S_ISDIR(m)      (((m) & S_IFMT) == S_IFDIR)
+ #define S_ISCHR(m)      (((m) & S_IFMT) == S_IFCHR)
+ #define S_ISBLK(m)      (((m) & S_IFMT) == S_IFBLK)
+ #define S_ISFIFO(m)     (((m) & S_IFMT) == S_IFIFO)
+ #define S_ISSOCK(m)     (((m) & S_IFMT) == S_IFSOCK)
+ 
+ #define S_IRWXU 00700
+ #define S_IRUSR 00400
+ #define S_IWUSR 00200
+ #define S_IXUSR 00100
+
+ #define S_IRWXG 00070
+ #define S_IRGRP 00040
+ #define S_IWGRP 00020
+ #define S_IXGRP 00010
+ 
+ #define S_IRWXO 00007
+ #define S_IROTH 00004
+ #define S_IWOTH 00002
+ #define S_IXOTH 00001
+ 
+ #endif
+ 
+ 
+ #endif /* _UAPI_LINUX_STAT_H */ 
+```
+&emsp;&emsp;最后的 module_param 字段是一个权限值，表示此参数在 sysfs 文件系统中所对应的文件节点的属性。这个值控制谁可以存取这些模块参数在 sysfs 中的表示。当 perm 为 0 时，表示此参数不存在 sysfs 文件系统下对应的文件节点。否则，模块被加载后，在`/sys/module/`目录下将出现以此模块名命名的目录，带有给定的权限。
+###### 4 对参数的描述方法
+&emsp;&emsp;通过宏 MODULE_PARM_DESC() 对参数进行说明，如上面所示。
+###### 5 module_param_named()
+&emsp;&emsp;原型：`module_param_named(name, varible, type, perm)`
+&emsp;&emsp;其中 name 是外部可见的参数名，variable 是源文件内部的全局变量名，而 module_param 通过 module_param_named 实现，此时 name 与 variable 相同。该方法可以是模块源文件内部的变量名与外部的参数名有不同的名字。
+###### 6 其他衍生的方法
+&emsp;&emsp;原型：`module_param_array(name, type, nump, perm)`
+&emsp;&emsp;参数：
+* name：既是用户看到的参数名，又是模块内接收参数的变量
+* type：表示参数的类型
+* nump：指针，指向一个整数，其值表示有多少个参数存放在数组 name 中。值得注意的是 name 数组必须静态分配
+* perm：指定了在 sysfs 中相应文件的访问权限
+
+&emsp;&emsp;原型：`module_param_string(name, string, len, perm)`
+&emsp;&emsp;参数：
+* name：既是用户看到的参数名，又是模块内接收参数的变量
+* string：是内部的变量名
+* nump：以string命名的buffer大小（可以小于buffer的大小，但是没有意义）
+* perm：指定了在 sysfs 中相应文件的访问权限
+
+
+
 
 
 # 九、 高精度定时器hrtimer的使用
