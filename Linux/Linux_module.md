@@ -1161,8 +1161,24 @@ MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
 * nump：以string命名的buffer大小（可以小于buffer的大小，但是没有意义）
 * perm：指定了在 sysfs 中相应文件的访问权限
 
+&emsp;&emsp;原型：`#define module_param_cb(name, ops, arg, perm)`
+&emsp;&emsp;参数：
+* name：参数名，应该是有效的 C 标识符
+* ops：对此参数的 set & get 操作的回调函数
+* perm：指定了在 sysfs 中相应文件的访问权限
 
-
+&emsp;&emsp;示例：
+```c
+static int dmatest_run_set(const char *val, const struct kernel_param *kp);
+static int dmatest_run_get(char *val, const struct kernel_param *kp);
+static const struct kernel_param_ops run_ops = {
+	.set = dmatest_run_set,
+	.get = dmatest_run_get,
+};
+static bool dmatest_run;
+module_param_cb(run, &run_ops, &dmatest_run, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(run, "Run the test (default: false)");
+```
 
 
 # 九、 高精度定时器hrtimer的使用
