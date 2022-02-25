@@ -569,6 +569,13 @@ list_for_each_entry_from_reverse逆序
 ```
 list_for_each_entry_safe 也是顺序遍历链表上节点嵌套的结构。只是加了删除节点的保护。
 ```c
+/**
+ * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
+ * @pos:	the type * to use as a loop cursor.
+ * @n:		another type * to use as temporary storage
+ * @head:	the head for your list.
+ * @member:	the name of the list_head within the struct.
+ */
 #define list_for_each_entry_safe(pos, n, head, member)          \
     for (pos = list_first_entry(head, typeof(*pos), member),    \
         n = list_next_entry(pos, member);           \
