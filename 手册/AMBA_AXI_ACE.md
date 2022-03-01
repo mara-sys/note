@@ -96,24 +96,41 @@
 &emsp;&emsp;后面的章节定义了信号参数和用法。 
 
 ## A3 章 单接口要求 
-&emsp;&emsp;本章描述了单个管理器和从属之间的基本 AXI 协议事务要求。 
+&emsp;&emsp;本章描述了单个管理器和从属之间的基本 AXI 协议事务的要求。 
+### A3.1 时钟和复位
+&emsp;&emsp;本节介绍实现 AXI 全局时钟和复位信号 ACLK 和 ARESETn 的要求。 
+#### A3.1.1 时钟
+&emsp;&emsp;每个 AXI 接口都有一个时钟信号 ACLK。 所有输入信号都在 ACLK 的上升沿采样。 所有输出信号的变化只能在 ACLK 的上升沿之后发生。
+&emsp;&emsp;在控制器和从属接口上，输入和输出信号之间不得有组合路径。 
+#### A3.1.2 复位
+&emsp;&emsp;AXI 协议使用单个低电平有效复位信号 ARESETn。 复位信号可以异步置位，但解除置位只能与 ACLK 的上升沿同步。
+&emsp;&emsp;在复位期间，以下接口要求适用： 
+* 控制接口必须驱动 ARVALID、AWVALID 和 WVALID 为低。
+* 从属接口必须将RVALID 和BVALID 驱动为低。
+* 其他所有信号都可以驱动为任意值。
 
+&emsp;&emsp;复位后允许管理器开始驱动 ARVALID、AWVALID 或 WVALID 为高电平的最早点是在 ARESETn 为高电平之后的 ACLK 上升沿。 图 A3-1 显示了复位后 ARVALID、AWVALID 或 WVALID 可以被驱动为高电平的最早点。 
+![A3-1](./AXI_images/0A0301_reset.png)  
 
+### A3.2 基本读写事务 
+&emsp;&emsp;本节定义了 AXI 协议事务的基本机制。 基本机制是： 
+* 握手过程
+* 第 A3 的信道信号要求 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#### A3.2.1 握手过程 
+&emsp;&emsp;所有五个事务通道都使用相同的 VALID/READY 握手过程来传输地址、数据和控制信息。 这种双向流控机制意味着控制器和从属都可以控制信息在控制器和从属之间移动的速率。 源生成 VALID 信号以指示地址、数据或控制信息何时可用。 目的地生成 READY 信号以表明它可以接受信息。 仅当 VALID 和 READY 信号都为高电平时才会发生传输。 
+&emsp;&emsp;在控制器和从属接口上，输入和输出信号之间不得有组合路径。
+&emsp;&emsp;图 A3-2 至图 A3-4 显示了握手过程的示例。
+&emsp;&emsp;源在 T1 之后显示信息并断言 VALID 信号，如图 A3-2 所示。 目标在 T2 之后断言 READY 信号。 源必须保持其信息稳定直到在 T3 发生传输，此时此断言被识别。 
+![A3-2](./AXI_images/0A0302_handshake.png)  
+&emsp;&emsp;在断言 VALID 之前，不允许源等到 READY 被断言。
+&emsp;&emsp;当 VALID 被断言时，它必须保持断言直到握手发生，在时钟上升沿同时 VALID 和 READY 都被断言。
+&emsp;&emsp;在图 A3-3 中，目的地在 T1 之后断言 READY，在地址、数据或控制信息有效之前。 该断言表明它可以接受该信息。 源在 T2 之后呈现信息并断言 VALID，然后在 T3 发生传输，当该断言被识别时。 在这种情况下，传输发生在一个周期内。 
+![A3-3](./AXI_images/0A0303_handshake.png)  
+&emsp;&emsp;在断言相应的 READY 之前，允许目的地等待 VALID 被断言。 如果 READY 被断言，则允许在 VALID 被断言之前取消断言 READY。 
+&emsp;&emsp;在图 A3-4 中，源和目的都恰好表明它们可以在 T1 之后传输地址、数据或控制信息。 在这种情况下，传输发生在时钟的上升沿，此时可以识别出 VALID 和 READY 的断言。 这些断言意味着传输发生在 T2。 
+![A3-4](./AXI_images/0A0304_handshake.png)  
+&emsp;&emsp;各个 AXI 协议通道握手机制在 Channel signaling requirements 中进行了描述。 
 
 
 
