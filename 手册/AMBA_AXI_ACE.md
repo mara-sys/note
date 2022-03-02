@@ -131,6 +131,261 @@
 &emsp;&emsp;在图 A3-4 中，源和目的都恰好表明它们可以在 T1 之后传输地址、数据或控制信息。 在这种情况下，传输发生在时钟的上升沿，此时可以识别出 VALID 和 READY 的断言。 这些断言意味着传输发生在 T2。 
 ![A3-4](./AXI_images/0A0304_handshake.png)  
 &emsp;&emsp;各个 AXI 协议通道握手机制在 Channel signaling requirements 中进行了描述。 
+#### A3.2.2 Channel signaling requirements
+&emsp;&emsp;以下部分定义了每个通道的握手信号和握手规则：
+* 信道握手信号
+* 写地址通道
+* 写数据通道
+* 写响应通道
+* 读地址通道
+* 读数据通道 
+##### 通道握手信号
+&emsp;&emsp;每个通道都有自己的 VALID/READY 握手信号对。 表 A3-1 显示了每个通道的信号。 
+
+| transaction channel | handshake pair   |
+| ------------------- | ---------------- |
+| 写地址通道          | AWVALID, AWREADY |
+| 写数据通道          | WVALID, WREADY   |
+| 写响应通道          | BVALID, BREADY   |
+| 读地址通道          | ARVALID, ARREADY |
+| 读数据通道          | RVALID, RREADY   |
+
+##### 写地址通道
+&emsp;&emsp;控制器只有在驱动了有效的地址和控制信息时才能断言 AWVALID 信号。 断言时，AWVALID 必须保持断言，一直保持到从属设备断言 AWREADY 之后的时钟上升沿。
+&emsp;&emsp;AWREADY 的默认状态可以是 HIGH 或 LOW。 本规范推荐默认状态为 HIGH。 当 AWREADY 为高时，从属必须能够接受提供给它的任何有效地址。 
+
+##### 写数据通道
+&emsp;&emsp;在写入突发期间，控制器只有在驱动有效的写入数据时才能断言 WVALID 信号。 断言时，WVALID 必须保持置位，直到从属置位 WREADY 后的时钟上升沿。
+&emsp;&emsp;WREADY 的默认状态可以是 HIGH，但前提是从属设备始终可以在单个周期内接受写入数据。
+&emsp;&emsp;控制器在驱动突发中的最终写传输时必须断言 WLAST 信号。
+&emsp;&emsp;该规范建议将 WDATA 驱动为零以用于非活动字节通道。 
+
+##### 写响应通道
+&emsp;&emsp;只有当它驱动一个有效的写响应时，从属才能断言 BVALID 信号。 断言时，BVALID 必须保持置位，直到控制器置位 BREADY 后的时钟上升沿。
+&emsp;&emsp;BREADY 的默认状态可以是 HIGH，但前提是控制器始终可以在单个周期内接受写入响应。 
+
+##### 读地址通道
+&emsp;&emsp;控制器只有在驱动有效地址和控制信息时才能断言 ARVALID 信号。 置位时，ARVALID 必须保持置位，直到从属置位 ARREADY 信号后的时钟上升沿。
+&emsp;&emsp;ARREADY 的默认状态可以是 HIGH 或 LOW。 本规范推荐默认状态为 HIGH。 如果 ARREADY 为 HIGH，则从属必须能够接受提供给它的任何有效地址。 
+
+##### 读数据通道
+&emsp;&emsp;只有在驱动有效的读取数据时，从属设备才能断言 RVALID 信号。 置位后，RVALID 必须保持置位，直到控制器置位 RREADY 后的时钟上升沿。 即使从属只有一个读取数据源，它也必须仅在响应数据请求时断言 RVALID 信号。
+&emsp;&emsp;控制器 接口使用 RREADY 信号来指示它接受数据。 RREADY 的默认状态可以是 HIGH，但前提是 控制器 在启动读取事务时能够立即接受读取数据。
+&emsp;&emsp;在驱动突发中的最终读取传输时，从属必须断言 RLAST 信号。
+&emsp;&emsp;该规范建议将 RDATA 驱动为零以用于非活动字节通道。 
+
+### A3.3 通道间的关系
+&emsp;&emsp;AXI 协议要求维护以下关系： 
+* 写响应必须始终跟在写事务中的最后一次写传输之后。 
+* 读取数据必须始终跟在数据的读取地址之后。 
+* 通道握手必须符合通道握手信号之间的依赖关系中定义的依赖关系。 
+
+&emsp;&emsp;该协议没有定义通道之间的任何其他关系。 
+&emsp;&emsp;缺少关系意味着，例如，写入数据可以出现在事务的写入地址之前的接口处。 如果写地址通道包含的寄存器级多于写数据通道，则会发生这种情况。 类似地，写入数据可能与地址出现在同一周期中。 
+&emsp;&emsp;当控制器发出写入请求时，它必须能够为该事务提供所有写入数据，而不依赖于来自该控制器的其他事务。
+&emsp;&emsp;当控制器发出读取请求时，它必须能够接受该事务的所有读取数据，而不依赖于来自该控制器的其他事务。
+&emsp;&emsp;请注意，控制器可以依赖从使用相同 ID 的事务中按顺序返回的读取数据，因此控制器只需要足够的存储空间来从具有不同 ID 的事务中读取数据。 
+
+#### A3.3.1 通道握手信号之间的依赖关系 
+&emsp;&emsp;为了防止出现死锁情况，必须遵守握手信号之间存在的依赖规则。 正如 A3-42 页上的通道信令要求中总结的那样，在任何事务中： 
+* AXI 接口发送信息的 VALID 信号不能依赖于接收该信息的 AXI 接口的 READY 信号。 
+* 正在接收信息的 AXI 接口可以等待，直到它检测到一个 VALID 信号，然后才断言其相应的 READY 信号。 
+
+&emsp;&emsp;注意：在断言 READY 之前等待断言 VALID 是可以接受的。 在检测到相应的 VALID 之前断言 READY 也是可以接受的。 这可以产生更有效的设计。 
+&emsp;&emsp;此外，不同通道上的握手信号之间存在依赖关系，AXI4 定义了额外的写响应依赖关系。 以下小节定义了这些依赖项： 
+* Read transaction dependencies on page A3-45
+* AXI3 write transaction dependencies on page A3-45
+* AXI4 and AXI5 write transaction dependencies on page A3-46
+
+&emsp;&emsp;在依赖关系图中： 
+* 单箭头指向可以在箭头开始处的信号之前或之后断言的信号。
+* 双箭头指向的信号必须在箭头开始处的信号断言之后才被断言。 
+
+##### 读事务依赖关系
+&emsp;&emsp;图 A3-5 显示了读取事务握手信号的依赖关系，并表明，在读取事务中： 
+* 控制器在断言 ARVALID 之前不得等待从属断言 ARREADY。
+* 在断言ARREADY 之前，下级可以等待ARVALID 被断言。
+* 从属可以在ARVALID 被断言之前断言ARREADY。
+* 从属必须等待 ARVALID 和 ARREADY 都被断言，然后才断言 RVALID 以指示有效数据可用。
+* 在断言RVALID 之前，从属不得等待控制器断言RREADY。
+* 控制器可以在断言RREADY 之前等待RVALID 被断言。
+* 控制器可以在RVALID 被断言之前断言RREADY。 
+
+![A3-5](./AXI_images/0A0305_read_transaction.png)  
+
+##### AXI3写事务依赖关系
+&emsp;&emsp;图 A3-6 显示了写事务握手信号的依赖关系，并显示了在写事务中： 
+* 控制器在断言 AWVALID 或 WVALID 之前不得等待从属断言 AWREADY 或 WREADY。
+* 在断言 AWREADY 之前，从属可以等待 AWVALID 或 WVALID，或两者。
+* 从属可以在断言 AWVALID 或 WVALID 或两者之前断言 AWREADY。
+* 在断言 WREADY 之前，从属可以等待 AWVALID 或 WVALID，或两者兼而有之。
+* 从属可以在断言 AWVALID 或 WVALID 或两者之前断言 WREADY。
+* 在断言 BVALID 之前，从属必须等待 WVALID 和 WREADY 都被断言。 在断言 BVALID 之前，从属也必须等待 WLAST 被断言。 需要等待是因为写响应 BRESP 必须在写事务的最后一次数据传输之后才发出信号。
+* 在断言 BVALID 之前，从属不得等待控制器断言 BREADY。
+* 控制器可以在断言 BREADY 之前等待 BVALID。
+* 控制器可以在断言 BVALID 之前断言 BREADY。 
+
+![A3-6](./AXI_images/0A0306_write_transaction.png)  
+
+警告：必须遵守相关性规则以防止出现死锁情况。 例如，控制器 在驱动 WVALID 之前不得等待 AWREADY 被断言。 如果从属在断言 AWREADY 之前等待 WVALID，则可能发生死锁情况。 
+
+##### AXI4 和 AXI5 写事务依赖关系
+&emsp;&emsp;AXI4 和 AXI5 定义了一个附加的从属写响应相关性。 在断言 BVALID 之前，从属必须等待断言 AWVALID、AWREADY、WVALID 和 WREADY。 通过发出写响应，从属负责针对所有后续事务检查写事务的危险性。 
+&emsp;&emsp;注意：这种额外的依赖关系反映了 AXI3 中的预期用途，因为预计任何组件在地址被接受之前都不会接受写入数据并提供写入响应。 
+&emsp;&emsp;图 A3-7 显示了所有 AXI4 和 AXI5 所需的从属写响应握手依赖关系。 单箭头指向可以在前一个信号被断言之前或之后被断言的信号。 双箭头指向必须在前一个信号断言之后才断言的信号。
+&emsp;&emsp;这些依赖项是： 
+* 控制器在断言AWVALID 或WVALID 之前不得等待从属断言AWREADY 或WREADY。
+* 在断言AWREADY 之前，从属可以等待AWVALID 或WVALID，或两者。
+* 从属可以在断言AWVALID 或WVALID 或两者之前断言AWREADY。
+* 在断言WREADY 之前，从属可以等待AWVALID 或WVALID，或两者兼而有之。
+* 从属可以在断言AWVALID 或WVALID 或两者之前断言WREADY。
+* 在断言BVALID 之前，从属必须等待AWVALID、AWREADY、WVALID 和WREADY 被断言。 在断言 BVALID 之前，从属也必须等待 WLAST 被断言。 这种等待是因为写响应 BRESP 必须在写事务的最后一次数据传输之后才发出信号。
+* 在断言BVALID 之前，从属不得等待控制器断言BREADY。
+* 控制器 可以在断言 BREADY 之前等待 BVALID。
+* 控制器 可以在断言 BVALID 之前断言 BREADY 
+
+![A3-7](./AXI_images/0A0307_write_transaction.png)  
+
+#### A3.3.2 遗留问题 
+&emsp;&emsp;第 A3-46 页上的 AXI4 和 AXI5 写入事务依赖项中描述的附加依赖项意味着接受所有写入数据并在接受地址之前提供写入响应的 AXI3 从属不符合 AXI4 或 AXI5。 将 AXI3 传统从属转换为 AXI4 或 AXI5 需要添加包装器。 该包装器确保在从属接受适当的地址之前不提供返回的写响应。 
+&emsp;&emsp;注意：本规范强烈建议任何新的 AXI3 从属实现都包含此附加依赖项。 
+&emsp;&emsp;任何 AXI3 管理器都符合 AXI4 和 AXI5 写响应要求。 
+
+### A3.4 Transaction structure
+&emsp;&emsp;本节介绍事务的结构。 以下部分定义了地址、数据和响应结构：
+&emsp;&emsp;有关本节中使用的术语的定义，请参阅第 Glossary-493 页的词汇表。 
+
+#### A3.4.1 Address 结构
+&emsp;&emsp;AXI 协议是基于突发的。 控制器通过将控制信息和事务中第一个字节的地址发送给从属来开始每个突发。 随着突发的进行，从属必须计算突发中后续传输的地址。
+&emsp;&emsp;突发不得跨越 4KB 地址边界。 
+&emsp;&emsp;注意：此禁令防止爆发跨越两个从属之间的边界。 它还限制了从属必须支持的地址增量的数量。 
+
+##### Burst length
+&emsp;&emsp;突发长度由下式指定： 
+* ARLEN[7:0]，用于读取传输 
+* AWLEN[7:0]，用于写传输 
+
+&emsp;&emsp;在本规范中，AxLEN 表示 ARLEN 或 AWLEN。 
+&emsp;&emsp;对于所有突发类型，AXI3 支持 1-16 突发长度的传输。 
+&emsp;&emsp;AXI4 将对 INCR 突发类型的突发长度支持扩展到 1-256 次传输。 AXI4 中对所有其他突发类型的支持仍为 1-16 次传输。
+&emsp;&emsp;AXI3 的突发长度定义为： 
+$ Burst_Length = AxLEN[3:0] + 1 $
+&emsp;&emsp;为了适应 AXI4 中 INCR 突发类型的扩展突发长度，AXI4 的突发长度定义为： 
+$ Burst_Length = AxLEN[7:0] + 1 $ 
+&emsp;&emsp;AXI 具有以下管理突发使用的规则： 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
