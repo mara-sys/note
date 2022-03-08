@@ -182,6 +182,153 @@ ENABLE 状态也只持续一个时钟周期，在此状态之后，如果不需�
 &emsp;&emsp;图 5-4 显示了一个读传输。 
 ![050504](./AMBA_Specification_images/050504_read_transfer.png)  
 &emsp;&emsp;地址、写、选择和选通信号的时序都与写传输相同。 在读取的情况下，从机必须在 ENABLE 周期内提供数据。 数据在 ENABLE 周期结束时的时钟上升沿采样。 
+### 5.3 关于 APB AMBA 组件 
+&emsp;&emsp;以下符号用于时序参数：
+* Tis - 输入建立时间
+* Tih - 输入保持时间
+* Tov - 输出有效时间
+* Toh - 输出保持时间。 
+### 5.4 APB 桥接器 
+&emsp;&emsp;APB 桥是 AMBA APB 上唯一的总线主机。 此外，APB 桥也是上层系统总线上的从机。 
+
+#### 5.4.1 接口图 
+&emsp;&emsp;APB 桥的APB 信号接口如图5-5 所示。 
+![050505](./AMBA_Specification_images/050505_interface_diagram.png)  
+
+#### 5.4.2 APB 桥接器说明
+&emsp;&emsp;桥接单元将系统总线传输转换为 APB 传输并执行以下功能： 
+* 锁定地址并在整个传输过程中保持有效。
+* 解码地址并生成外设选择 PSELx。 在传输期间只能激活一个选择信号。
+* 将数据驱动到 APB 以进行写传输。
+* 将 APB 数据驱动到系统总线上进行读取传输。
+* 为传输生成一个定时选通脉冲PENABLE。 
+
+#### 5.4.3 时序图
+&emsp;&emsp;APB 桥的时序参数如图 5-6 所示：
+![050506](./AMBA_Specification_images/050506_bridge_transfer.png)  
+#### 5.4.4 时序参数
+&emsp;&emsp;与 APB 桥相关的时序参数在表 5-1（输入信号）和表 5-2（输出信号）中给出。 
+&emsp;&emsp;APB 桥 input 参数
+
+| 参数    | 描述                                              |
+| ------- | ------------------------------------------------- |
+| Tclkl   | PCLK LOW time                                     |
+| Tclkh   | PCLK HIGH time                                    |
+| Tisnres | PRESETn de-asserted setup to rising PCLK          |
+| Tihnres | PRESETn de-asserted hold after rising PCLK        |
+| Tisprd  | For read transfers, PRDATA setup to rising PCLK   |
+| Tihprd  | For read transfers, PRDATA hold after rising PCLK |
+
+&emsp;&emsp;APB 桥 output 参数
+
+| Parameter | Description                                         |
+| --------- | --------------------------------------------------- |
+| Tovpen    | PENABLE valid after rising PCLK                     |
+| Tohpen    | PENABLE hold after rising PCLK                      |
+| Tovpsel   | PSEL valid after rising PCLK                        |
+| Tohpsel   | PSEL hold after rising PCLK                         |
+| Tovpa     | PADDR valid after rising PCLK                       |
+| Tohpa     | PADDR hold after rising PCLK                        |
+| Tovpw     | PWRITE valid after rising PCLK                      |
+| Tohpw     | PWRITE hold after rising PCLK                       |
+| Tovpwd    | For write transfers, PWDATA valid after rising PCLK |
+| Tohpwd    | For write transfers, PWDATA hold after rising PCLK  |
+
+### 5.5 APB 从机
+&emsp;&emsp;APB 从机有一个简单而灵活的接口。 接口的确切实现将取决于所采用的设计风格，并且可能有许多不同的选项。 
+#### 5.5.1 接口图
+&emsp;&emsp;APB 从机接口信号如图 5-7 所示。
+![050507](./AMBA_Specification_images/050507_slave_interface.png)  
+#### 5.5.2 APB 从机描述
+&emsp;&emsp;APB 从接口非常灵活。
+&emsp;&emsp;对于写传输，可以在以下点锁存数据：
+* 在 PCLK 的任一上升沿，当 PSEL 为高电平时
+* 在 PENABLE 的上升沿，当 PSEL 为高电平时。
+
+&emsp;&emsp;**选择信号 PSELx、地址 PADDR 和写信号 PWRITE 可以结合起来确定哪个寄存器应该被写操作更新。
+&emsp;&emsp;对于读传输，当 PWRITE 为低电平且 PSELx 和 PENABLE 都为高电平时，可以将数据驱动到数据总线上。 而 PADDR 用于确定应该读取哪个寄存器**。 
+
+#### 5.5.3 时序图
+&emsp;&emsp;与访问 APB 总线从机相关的时序参数如图 5-8 所示。 
+![050508](./AMBA_Specification_images/050508.png)  
+
+#### 5.5.4 时序参数
+&emsp;&emsp;与 APB 从机相关的时序参数在表 5-3 中给出了输入信号，表 5-4 中给出了输出信号。 
+&emsp;&emsp;表 5-3 APB 从机输入参数 
+
+| 参数    | 描述                                               |
+| ------- | -------------------------------------------------- |
+| Tclkl   | PCLK LOW time                                      |
+| Tclkh   | PCLK HIGH time                                     |
+| Tisnres | PRESETn de-asserted setup to rising PCLK           |
+| Tihnres | PRESETn de-asserted hold after falling PCLK        |
+| Tispen  | PENABLE setup to rising PCLK                       |
+| Tihpen  | PENABLE hold after rising PCLK                     |
+| Tispsel | PSEL setup to rising PCLK                          |
+| Tihpsel | PSEL hold after rising PCLK                        |
+| Tispa   | PADDR setup to rising PCLK                         |
+| Tihpa   | PADDR hold after rising PCLK                       |
+| Tispw   | PWRITE setup to rising PCLK                        |
+| Tihpw   | PWRITE hold after rising PCLK                      |
+| Tispwd  | For write transfers, PWDATA setup to rising PCLK   |
+| Tihpwd  | For write transfers, PWDATA hold after rising PCLK |
+
+&emsp;&emsp;表 5-4 APB 从机输出参数 
+
+| 参数   | 描述                                               |
+| ------ | -------------------------------------------------- |
+| Tovprd | For read transfers, PRDATA valid after rising PCLK |
+| Tohprd | For read transfers, PRDATA hold after rising PCLK  |
+
+### 5.6 APB 到 AHB 接口
+&emsp;&emsp;AMBA APB 与 AHB 的接口描述如下：
+* 读取传输
+* 第 5-15 页的写传输
+* 背靠背传输（第 5-17 页）
+* 三态数据总线实现（第 5-18 页）。 
+
+#### 5.6.1 读传输
+&emsp;&emsp;图 5-9 介绍了一个读传输。
+![050509](./AMBA_Specification_images/050509_transfer_to_AHB.png)  
+&emsp;&emsp;传输在时间 T1 在 AHB 上开始，地址由 APB 桥在 T2 采样。如果传输是针对外设总线的，则广播该地址并生成适当的外设选择信号。外围总线上的第一个周期称为 SETUP 周期，随后是 ENABLE 周期，此时 PENABLE 信号被断言。
+&emsp;&emsp;在 ENABLE 周期期间，外设必须提供读取数据。通常可以将该读取数据直接路由回 AHB，在此总线主机可以在 ENABLE 周期结束时的时钟上升沿对其进行采样，即第 5-9 页中的时间 T4 5-14。
+&emsp;&emsp;在时钟频率非常高的系统中，桥可能需要在 ENABLE 周期结束时注册读取的数据，然后在下一个周期将其驱动回 AHB 总线主机。虽然这需要外设总线读取传输的额外等待状态，但它允许 AHB 以更高的时钟频率运行，从而导致系统性能的整体改进。读传输突发如图 5-10 所示。所有读取传输都需要一个等待状态。 
+![050510](./AMBA_Specification_images/050510_burst_read.png)
+
+#### 5.6.2 写传输
+&emsp;&emsp;图 5-11 显示了写传输。
+![050511](./AMBA_Specification_images/050511_write_transfer.png)  
+&emsp;&emsp;到 APB 的单次写入传输可以在零等待状态下发生。 桥接器负责对传输的地址和数据进行采样，然后在 APB 上的写传输期间保存这些值。
+&emsp;&emsp;写入传输突发显示在图 5-12 中。 
+![050512](./AMBA_Specification_images/050512_burst_write.png)  
+&emsp;&emsp;虽然第一次传输可以在零等待状态下完成，但到外围总线的后续传输将需要一个等待状态来执行每个传输。
+&emsp;&emsp;桥必须包含两个地址寄存器，以便桥可以采样下一次传输的地址，而当前传输在外围总线上继续进行。 
+
+#### 5.6.3 背靠背传输
+&emsp;&emsp;图 5-13 显示了许多背靠背传输。 该序列以写入开始，然后是读取，然后是写入，然后是读取。 
+![050513](./AMBA_Specification_images/050513_backtoback.png)  
+&emsp;&emsp;图 5-13 显示，如果读传输紧跟在写操作之后，则需要 3 个等待状态才能完成读操作。 事实上，在基于处理器的设计中，写后读不会经常发生，因为处理器将在两次传输之间执行取指令，并且指令存储器不太可能驻留在 APB 上。 
+
+### 5.6.4 三态数据总线实现 
+&emsp;&emsp;建议使用单独的读写数据总线来实现 AMBA APB，这允许使用多路复用总线或 OR 总线方案来互连 APB 上的各种从机。 如果使用三态总线，则可以将读取和写入数据总线组合成单个总线，因为读取数据和写入数据永远不会同时发生。
+&emsp;&emsp;图 5-14 说明，如果数据总线是使用三态缓冲器实现的，则无需特别考虑。 如果数据总线在读取传输的 SETUP 周期中是三态的，并且每当总线处于空闲状态时，则在数据的不同驱动器之间总是发生整个时钟周期的周转。 对于突发的写传输没有周转，因为桥将在每次传输的 SETUP 周期中驱动数据，但是这是完全可以接受的，因为桥是写传输数据总线的唯一驱动器，因此不需要周转期。
+&emsp;&emsp;图 5-14 显示了如何将读取和写入数据总线成功地组合成单个三态数据总线。 
+![050514](./AMBA_Specification_images/050514_tristate_data.png)  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
