@@ -664,28 +664,66 @@ AXI4 对 AXI3 内存属性信号进行了以下更改：
 
 
 ### A4.4 内存类型
-&emsp;&emsp;AXI4 协议为由 AxCACHE 编码标识的内存类型引入了新名称。 表 A4-5 显示了 AXI4 AxCACHE 编码和相关的内存类型。 某些内存类型在 AXI3 中具有不同的编码，这些编码显示在括号中。 
-&emsp;&emsp;注意：
+&emsp;&emsp;AXI4 协议为由 AxCACHE 编码标识的内存类型引入了新名称。 表 A4-5 显示了 AXI4 AxCACHE 编码和相关的内存类型。 某些内存类型在 AXI3 中具有不同的编码，这些编码显示在括号中。   
+&emsp;&emsp;注意：相同的内存类型在读通道和写通道上可以有不同的编码。 这些编码提供与 AXI3 AxCACHE 定义的向后兼容性。  
+&emsp;&emsp;在 AXI4 中，对特定内存类型使用多个 AxCACHE 值是合法的。 表 A4-5 显示了首选 AXI4 值，括号中为合法 AXI3 值。   
 
+| ARCACHE[3:0]    | AWCACHE[3:0]    | Memory type                               |
+| --------------- | --------------- | ----------------------------------------- |
+| 0b0000          | 0b0000          | Device Non-bufferable                     |
+| 0b0001          | 0b0001          | Device Bufferable                         |
+| 0b0010          | 0b0010          | Normal Non-cacheable Non-bufferable       |
+| 0b0011          | 0b0011          | Normal Non-cacheable Bufferable           |
+| 0b1010          | 0b0110          | Write-Through No-Allocate                 |
+| 0b1110 (0b0110) | 0b0110          | Write-Through Read-Allocate               |
+| 0b1010          | 0b1110 (0b1010) | Write-Through Write-Allocate              |
+| 0b1110          | 0b1110          | Write-Through Read and<br/>Write-Allocate |
+| 0b1011          | 0b0111          | Write-Back No-Allocate                    |
+| 0b1111 (0b0111) | 0b0111          | Write-Back Read-Allocate                  |
+| 0b1011          | 0b1111 (0b1011) | Write-Back Write-Allocate                 |
+| 0b1111          | 0b1111          | Write-Back Read and Write-Allocate        |
 
+&emsp;&emsp;表 A4-5 中未显示的所有值均保留。 
 
+#### A4.4.1 内存类型要求 
+&emsp;&emsp;本节指定每种内存类型所需的行为。 
 
+##### Device Non-bufferable
+&emsp;&emsp;设备非缓冲内存所需的行为是：
+* 必须从最终目的地获得写响应。
+* 必须从最终目的地获取读取数据。
+* 交易不可修改，请参阅 Non-modifiable transactions 。
+* 不得预取读取。 不得合并写入。
 
+##### Device Bufferable
+&emsp;&emsp;设备可缓冲内存类型所需的行为是：
+* 可以从中间点获得写响应。
+* 写入事务必须及时在最终目的地可见，如第 A4-74 页的事务缓冲中所定义。
+* 必须从最终目的地获取读取数据。
+* 交易不可修改，请参阅第 A4-64 页的不可修改交易。
+* 不得预取读取。 不得合并写入。 
 
+&emsp;&emsp;注意：两种设备内存类型都是不可修改的。 在本协议规范中，术语设备内存和不可修改内存是可以互换的。 
+&emsp;&emsp;对于读取事务，Device Non-bufferable 和 Device Bufferable 内存类型所需的行为没有区别。 
+##### Normal Non-cacheable Non-bufferable
+&emsp;&emsp;Normal Non-cacheable Non-bufferable 内存类型所需的行为是：
+* 必须从最终目的地获得写响应。
+* 必须从最终目的地获取读取数据。
+* 事务是可修改的，请参阅第 A4-65 页的可修改事务
+* 可以合并写入。 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+##### Normal Non-cacheable Bufferable
+&emsp;&emsp;Normal Non-cacheable Bufferable 内存类型所需的行为是： 
+* 可以从中间点获得写响应。
+* 写入事务必须及时在最终目的地可见，如第 A4-74 页的事务缓冲中所定义。 没有确定写入事务何时在其最终目的地可见的机制。
+* 必须从以下任一渠道获取读取数据： 
+  * 最终的目的地
+  * 正在向最终目的地进行的写入事务
+如果读取数据是从写入事务中获取的：
+  * 它必须从最新版本的写入中获得。
+  * 不得缓存数据以服务于以后的读取。 
+* 事务是可修改的，请参阅第 A4-65 页的可修改事务。
+* 可以合并写入。 
 
 
 
