@@ -213,9 +213,12 @@ if (rdata != 32'h0) begin
     `uvm_info("write error!", $sformatf("DMA_INT_STAT:%h", rdata), UVM_LOW);
 end
 ```
+&emsp;&emsp;上面代码先向寄存器中写入 32'hf，再读回来寄存器中的值，因为每个寄存器可写可读的位不同，因此都回来的值不是 32'hf。APB 总线波形如下： 
 <div align=center>
 <img src="AMBA_Specification_images/0502my_verdi.png" width="2000">
 </div> 
+&emsp;&emsp;在第一条黄线处，传输开始，即 SETUP 周期，经过一个 pclk 时钟周期以后，penable 变为高电平，进入 ENABLE 周期。在第二条黄线处， ENABLE 周期结束，此时 pwrite 信号为高电平，表明是写入操作，向 paddr 地址中写入 pwdata，即向 0x0 中写入 0xffff_ffff。因为后续还要传输，ENABLE 周期结束进入 SETUP 周期，随后又进入 ENABLE。
+&emsp;&emsp;在第三条黄线处，ENABLE 周期结束时，又一次传输完成，此时，pwrite 为低电平，表明是读操作，从 paddr 中读 prdata，即从 0x0 中读出 0x1f。后面第四第六条黄线是写入，第五第七条黄线是读出。
 
 ### 5.3 关于 APB AMBA 组件 
 &emsp;&emsp;以下符号用于时序参数：
