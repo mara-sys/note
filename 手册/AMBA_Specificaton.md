@@ -116,7 +116,7 @@ AHB 将只包括一个仲裁器，尽管这在单总线主控系统中是不重�
 
 | Name                         | Description                                                  |
 | ---------------------------- | ------------------------------------------------------------ |
-| PCLK<br/>总线时钟            | PCLK 的上升沿用于对 APB 上的所有传输进行计时。               |
+| PCLK<br/>总线时钟            | **PCLK 的上升沿用于对 APB 上的所有传输进行计时。**           |
 | PRESETn<br/>APB 复位         | APB 总线复位信号为低电平有效，该信号通常直接连接到系统总线复位信号。 |
 | PADDR[31:0]<br/>APB 地址总线 | 这是 APB 地址总线，最高可达 32 位宽，由外围总线桥单元驱动。  |
 | PSELx<br/>APB select         | 从外围总线桥单元内的次级解码器到每个外围总线从设备x的信号。 该信号表示选择了从设备并且需要进行数据传输。 每个总线从机都有一个 PSELx 信号。 |
@@ -173,7 +173,7 @@ ENABLE 状态也只持续一个时钟周期，在此状态之后，如果不需�
 #### 5.2.2 写传输
 &emsp;&emsp;基本的写传输如图 5-3 所示。 
 ![050503](./AMBA_Specification_images/050503_write_transfer.png)  
-&emsp;&emsp;写传输，在时钟上升沿之后，地址、写数据、写信号和选择信号都开始传输。 传输的第一个时钟周期称为 SETUP 周期。 在下一个时钟沿之后，使能信号 PENABLE 被断言，这表明 ENABLE 周期正在发生。 **地址、数据和控制信号在整个使能周期都保持有效**。 传输在此周期结束时完成。
+&emsp;&emsp;写传输，在时钟上升沿之后，地址、写数据、写信号（PWRITE)和选择信号都开始传输。 传输的第一个时钟周期称为 SETUP 周期。 在下一个时钟沿之后，使能信号 PENABLE 被断言，这表明 ENABLE 周期正在发生。 **地址、数据和控制信号在整个使能周期都保持有效**。 传输在此周期结束时完成。
 &emsp;&emsp;使能信号 PENABLE 将在传输结束时置低。 选择信号也将变为低电平，除非在传输之后立即向同一外设进行另一次传输。
 &emsp;&emsp;为了降低功耗，地址信号和写信号在传输后不会改变，直到下一次访问发生。 
 &emsp;&emsp;该协议只需要使能信号上的干净转换。 在背靠背传输的情况下，选择信号和写入信号可能会出现故障。 
@@ -181,7 +181,42 @@ ENABLE 状态也只持续一个时钟周期，在此状态之后，如果不需�
 #### 5.2.3 读传输
 &emsp;&emsp;图 5-4 显示了一个读传输。 
 ![050504](./AMBA_Specification_images/050504_read_transfer.png)  
-&emsp;&emsp;地址、写、选择和选通信号的时序都与写传输相同。 在读取的情况下，从机必须在 ENABLE 周期内提供数据。 数据在 ENABLE 周期结束时的时钟上升沿采样。 
+&emsp;&emsp;地址、写、选择和选通信号的时序都与写传输相同。 在读取的情况下，从机必须在 ENABLE 周期内提供数据。 **数据在 ENABLE 周期结束时的时钟上升沿采样**。 
+
+
+#### 示例（非手册内容）
+```verilog
+/*
+ * address:
+ *  DMA_CH_EN: 0x0
+ *  DMA_INT_MASK: 0x4
+ *  DMA_INT_STAT: 0x8
+ */
+bit [31:0] reg_test = 32'hffffffff;
+
+sys_dma_reg.DMA_CH_EN.write(status_reg, reg_test);
+sys_dma_reg.DMA_CH_EN.read(status_reg, rdata);
+if (rdata != reg_test[4:0]) begin
+    `uvm_info("write error!", $sformatf("DMA_CH_EN:%h", rdata), UVM_LOW);
+end
+
+sys_dma_reg.DMA_INT_MASK.write(status_reg, reg_test);
+sys_dma_reg.DMA_INT_MASK.read(status_reg, rdata);
+if (rdata != 32'h70fff) begin
+    `uvm_info("write error!", $sformatf("DMA_INT_MASK:%h", rdata), UVM_LOW);
+end
+
+
+sys_dma_reg.DMA_INT_STAT.write(status_reg, reg_test);
+sys_dma_reg.DMA_INT_STAT.read(status_reg, rdata);
+if (rdata != 32'h0) begin
+    `uvm_info("write error!", $sformatf("DMA_INT_STAT:%h", rdata), UVM_LOW);
+end
+```
+<div align=center>
+<img src="AMBA_Specification_images/0502my_verdi.png" width="1400">
+</div> 
+
 ### 5.3 关于 APB AMBA 组件 
 &emsp;&emsp;以下符号用于时序参数：
 * Tis - 输入建立时间
@@ -314,7 +349,6 @@ ENABLE 状态也只持续一个时钟周期，在此状态之后，如果不需�
 &emsp;&emsp;图 5-14 说明，如果数据总线是使用三态缓冲器实现的，则无需特别考虑。 如果数据总线在读取传输的 SETUP 周期中是三态的，并且每当总线处于空闲状态时，则在数据的不同驱动器之间总是发生整个时钟周期的周转。 对于突发的写传输没有周转，因为桥将在每次传输的 SETUP 周期中驱动数据，但是这是完全可以接受的，因为桥是写传输数据总线的唯一驱动器，因此不需要周转期。
 &emsp;&emsp;图 5-14 显示了如何将读取和写入数据总线成功地组合成单个三态数据总线。 
 ![050514](./AMBA_Specification_images/050514_tristate_data.png)  
-
 
 
 
