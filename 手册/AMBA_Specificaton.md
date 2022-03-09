@@ -214,7 +214,7 @@ if (rdata != 32'h0) begin
 end
 ```
 <div align=center>
-<img src="AMBA_Specification_images/0502my_verdi.png" width="1400">
+<img src="AMBA_Specification_images/0502my_verdi.png" width="2000">
 </div> 
 
 ### 5.3 关于 APB AMBA 组件 
