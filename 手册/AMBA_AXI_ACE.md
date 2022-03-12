@@ -31,7 +31,7 @@
 * 读取数据，其信号名称以 R 开头。
 * 写地址，其信号名称以 AW 开头。
 * 写数据，其信号名称以 W 开头。
-* 写相应，其信号名称以 B 开头。
+* 写响应，其信号名称以 B 开头。
 
 &emsp;&emsp;一个地址通道带着描述了要传输数据的性质的控制信息。 使用以下任一方式在控制器和从属之间传输数据： 
 * 一个写数据通道，用于将数据从控制器传输到从属。 在写事务中，从属使用写响应通道向管理器发出传输完成的信号。 
@@ -93,7 +93,95 @@
 
 ## A2 章 信号描述
 &emsp;&emsp;本章介绍 AXI 接口信号。 大多数信号是协议的 AXI3 和 AXI4 实现所必需的，表格汇总了例外的信号的定义。 
-&emsp;&emsp;后面的章节定义了信号参数和用法。 
+&emsp;&emsp;后面的章节定义了信号参数和用法。
+
+### A2.1 全局信号
+&emsp;&emsp;表 A2-1 显示了全局 AXI 信号。 这些信号由 AXI3 和 AXI4 协议使用。 
+
+| Signal  | Source       | Description                                           |
+| ------- | ------------ | ----------------------------------------------------- |
+| ACLK    | Clock source | 全局时钟信号。 在全局时钟的上升沿对同步信号进行采样。 |
+| ARESETn | Reset source | 全局复位信号。 该信号为低电平有效。                   |
+
+&emsp;&emsp;所有信号都在全局时钟的上升沿采样。 
+
+### A2.2 写地址通道信号
+&emsp;&emsp;表 A2-2 显示了 AXI 写地址通道信号。 除非另有说明，否则 AXI3 和 AXI4 使用信号。 
+
+| Signal   | Source      | Description                                                  |
+| -------- | ----------- | ------------------------------------------------------------ |
+| AWID     | Manager     | 写事务的标识标签。                                           |
+| AWADDR   | Manager     | 写事务中第一笔传输的地址。                                   |
+| AWLEN    | Manager     | 长度，写事务中数据传输的确切数量。 此信息确定与地址关联的数据传输次数。 在 AXI3 和 AXI4有些区别。 |
+| AWSIZE   | Manager     | size，写事务中每次数据传输的字节的个数。                     |
+| AWBURST  | Manager     | 突发类型，指示写事务中每次传输之间的地址如何变化。           |
+| AWLOCK   | Manager     | 提供有关写入事务的原子特征的信息。 在 AXI3 和 AXI4有些区别。 |
+| AWCACHE  | Manager     | 指示写入事务如何通过系统进行。                               |
+| AWPROT   | Manager     | 写事务的保护属性：权限、安全级别和访问类型。                 |
+| AWQOS    | Manager     | Quality of Service identifier for a write transaction.<br/> AXI3 中没有实现。 |
+| AWREGION | Manager     | 写入事务的区域指示符。 <br>AXI3 中没有实现。                 |
+| AWUSER   | Manager     | 用户定义的写地址通道扩展。 AXI3 中没有实现。                 |
+| AWVALID  | Manager     | 表明写地址通道信号是有效的。                                 |
+| AWREADY  | Subordinate | 表示可以接受写地址通道上的传输。                             |
+
+### A2.3 写数据通道信号
+&emsp;&emsp;表 A2-3 显示了 AXI 写数据通道信号。 除非另有说明，否则 AXI3 和 AXI4 使用信号。
+
+| Signal | Source      | Description                                     |
+| ------ | ----------- | ----------------------------------------------- |
+| WID    | Manager     | 写入数据传输的 ID 标签。 仅在 AXI3 中实现。     |
+| WDATA  | Manager     | 写数据。                                        |
+| WSTRB  | Manager     | 写选通，指示哪些字节通道是有效数据。            |
+| WLAST  | Manager     | 指示这是否是写事务中的最后一次数据传输。        |
+| WUSER  | Manager     | 写入数据通道的用户定义扩展。 未在 AXI3 中实现。 |
+| WVALID | Manager     | 表示写数据通道信号有效。                        |
+| WREADY | Subordinate | 表示可以接受写入数据通道上的传输。              |
+
+### A2.4 写响应通道信号
+&emsp;&emsp;表 A2-4 显示了 AXI 写响应通道信号。 除非另有说明，否则 AXI3 和 AXI4 使用信号。
+
+| Signal | Source      | Description                                   |
+| ------ | ----------- | --------------------------------------------- |
+| BID    | Subordinate | 写响应标识标签                                |
+| BRESP  | Subordinate | 写响应，表明写写事务的状态                    |
+| BUSER  | Subordinate | 写响应通道的用户定义扩展。 未在 AXI3 中实现。 |
+| BVALID | Subordinate | 表示写响应通道信号有效。                      |
+| BREADY | Manager     | 表示可以接受写响应通道上的传输。              |
+
+### A2.5 读地址通道信号
+&emsp;&emsp;表 A2-5 显示了 AXI 读取地址通道信号。 除非另有说明，否则 AXI3 和 AXI4 使用信号。
+
+| Signal   | Source      | Description                                                  |
+| -------- | ----------- | ------------------------------------------------------------ |
+| ARID     | Manager     | 读事务的标识标签                                             |
+| ARADDR   | Manager     | 读事务第一笔传输的地址                                       |
+| ARLEN    | Manager     | 长度，读取事务中数据传输的确切数量。 这会在 AXI3 和 AXI4 之间发生变化。 |
+| ARSIZE   | Manager     | size，读事务中每次数据传输的字节数量。                       |
+| ARBURST  | Manager     | 突发类型，指示读取事务中每次传输之间的地址如何变化。         |
+| ARLOCK   | Manager     | 提供有关读取事务的原子特征的信息。 这会在 AXI3 和 AXI4 之间发生变化。 |
+| ARCACHE  | Manager     | 指示如何要求读取事务通过系统进行。                           |
+| ARPROT   | Manager     | 读事务的保护属性：权限、安全级别和访问类型。                 |
+| ARQOS    | Manager     | 读取事务的服务质量标识符。 未在 AXI3 中实现。                |
+| ARREGION | Manager     | 读取事务的区域指示符。 未在 AXI3 中实现。                    |
+| ARUSER   | Manager     | 读取地址通道的用户定义扩展。 未在 AXI3 中实现。              |
+| ARVALID  | Manager     | 表示读地址通道信号有效。                                     |
+| ARREADY  | Subordinate | 表示可以接受读取地址通道上的传输。                           |
+
+### A2.6 读数据通道信号
+&emsp;&emsp;表 A2-6 显示了 AXI 读取数据通道信号。 除非另有说明，否则 AXI3 和 AXI4 使用信号。 
+
+| Signal | Source      | Description                                     |
+| ------ | ----------- | ----------------------------------------------- |
+| RID    | Subordinate | 读取数据和响应的标识标签                        |
+| RDATA  | Subordinate | 读取数据                                        |
+| RRESP  | Subordinate | 读响应，表明读取传输的状态                      |
+| RLAST  | Subordinate | 指示这是否是读取事务中的最后一次数据传输。      |
+| RUSER  | Subordinate | 读取数据通道的用户定义扩展。 未在 AXI3 中实现。 |
+| RVALID | Subordinate | 表示读取的数据通道信号有效。                    |
+| RREADY | Manager     | 表示可以接受读取数据通道上的传输。              |
+
+
+
 
 ## A3 章 单接口要求 
 &emsp;&emsp;本章描述了单个管理器和从属之间的基本 AXI 协议事务的要求。 
