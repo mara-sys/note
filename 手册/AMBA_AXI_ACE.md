@@ -562,6 +562,7 @@ $ Aligned\_Address = (INT(Start\_Address / Number\_Bytes)) × Number\_Bytes $
 &emsp;&emsp;AXI 协议为读取和写入事务提供响应信号：
 * 对于读取事务，来自从属的响应信息在读取数据通道上发出信号。
 * 对于写事务，响应信息在写响应通道上发出信号。
+
 &emsp;&emsp;响应通过以下方式发出信号：
 * RRESP[1:0]，用于读传输。
 * BRESP[1:0]，用于写传输。 
