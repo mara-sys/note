@@ -190,6 +190,7 @@
 #### A3.1.1 时钟
 &emsp;&emsp;每个 AXI 接口都有一个时钟信号 ACLK。 所有输入信号都在 ACLK 的上升沿采样。 所有输出信号的变化只能在 ACLK 的上升沿之后发生。
 &emsp;&emsp;在控制器和从属接口上，输入和输出信号之间不得有组合路径。 
+
 #### A3.1.2 复位
 &emsp;&emsp;AXI 协议使用单个低电平有效复位信号 ARESETn。 复位信号可以异步置位，但解除置位只能与 ACLK 的上升沿同步。
 &emsp;&emsp;在复位期间，以下接口要求适用： 
@@ -203,7 +204,7 @@
 ### A3.2 基本读写事务 
 &emsp;&emsp;本节定义了 AXI 协议事务的基本机制。 基本机制是： 
 * 握手过程
-* 第 A3 的信道信号要求 
+* 通道信号请求 
 
 #### A3.2.1 握手过程 
 &emsp;&emsp;所有五个事务通道都使用相同的 VALID/READY 握手过程来传输地址、数据和控制信息。 这种双向流控机制意味着控制器和从属都可以控制信息在控制器和从属之间移动的速率。 源生成 VALID 信号以指示地址、数据或控制信息何时可用。 目的地生成 READY 信号以表明它可以接受信息。 仅当 VALID 和 READY 信号都为高电平时才会发生传输。 
@@ -211,7 +212,7 @@
 &emsp;&emsp;图 A3-2 至图 A3-4 显示了握手过程的示例。
 &emsp;&emsp;源在 T1 之后显示信息并断言 VALID 信号，如图 A3-2 所示。 目标在 T2 之后断言 READY 信号。 源必须保持其信息稳定直到在 T3 发生传输，此时此断言被识别。 
 ![A3-2](./AXI_images/0A0302_handshake.png)  
-&emsp;&emsp;在断言 VALID 之前，不允许源等到 READY 被断言。
+&emsp;&emsp;在断言 VALID 之前，不允许源等到 READY 被断言。*（即，不要让源的 valid 信号依赖于目的地的 ready）*
 &emsp;&emsp;当 VALID 被断言时，它必须保持断言直到握手发生，在时钟上升沿同时 VALID 和 READY 都被断言。
 &emsp;&emsp;在图 A3-3 中，目的地在 T1 之后断言 READY，在地址、数据或控制信息有效之前。 该断言表明它可以接受该信息。 源在 T2 之后呈现信息并断言 VALID，然后在 T3 发生传输，当该断言被识别时。 在这种情况下，传输发生在一个周期内。 
 ![A3-3](./AXI_images/0A0303_handshake.png)  
@@ -219,6 +220,7 @@
 &emsp;&emsp;在图 A3-4 中，源和目的都恰好表明它们可以在 T1 之后传输地址、数据或控制信息。 在这种情况下，传输发生在时钟的上升沿，此时可以识别出 VALID 和 READY 的断言。 这些断言意味着传输发生在 T2。 
 ![A3-4](./AXI_images/0A0304_handshake.png)  
 &emsp;&emsp;各个 AXI 协议通道握手机制在 Channel signaling requirements 中进行了描述。 
+
 #### A3.2.2 Channel signaling requirements
 &emsp;&emsp;以下部分定义了每个通道的握手信号和握手规则：
 * 信道握手信号
@@ -292,7 +294,7 @@
 ##### 读事务依赖关系
 &emsp;&emsp;图 A3-5 显示了读取事务握手信号的依赖关系，并表明，在读取事务中： 
 * 控制器在断言 ARVALID 之前不得等待从属断言 ARREADY。
-* 在断言ARREADY 之前，下级可以等待ARVALID 被断言。
+* 在断言ARREADY 之前，从属可以等待ARVALID 被断言。
 * 从属可以在ARVALID 被断言之前断言ARREADY。
 * 从属必须等待 ARVALID 和 ARREADY 都被断言，然后才断言 RVALID 以指示有效数据可用。
 * 在断言RVALID 之前，从属不得等待控制器断言RREADY。
