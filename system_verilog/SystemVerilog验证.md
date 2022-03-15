@@ -200,6 +200,132 @@ end
 ```
 &emsp;&emsp;其他的数组缩减方法还有 product（积），and（与），or（或），和 xor（异或）。
 
+#### 2.7.2 数组定位方法
+&emsp;&emsp;......
+
+
+### 2.8 选择存储类型
+
+### 2.9 使用 typedef 创建新的类型
+&emsp;&emsp;typedef 语句可以用来创建新的类型。例如，你要求一个算术逻辑单元（ALU）在编译时可配置，以适应 8 比特、16 比特、24 比特或 32 比特等不同位宽的操作数。在 verilog 中，可以为操作数的位宽和类型分别定义一个宏，如下例所示：
+```verilog
+// 老的 verilog 风格
+`define OPSIZE 8
+`define OPREG reg[`OPSIZE-1:0]
+
+`OPREG op_a, op_b;
+```
+&emsp;&emsp;在这种情况下，你并没有创建新的类型，而只是在进行文本替换。在 system verilog 中，采用下面的代码可以创建新的类型。
+```verilog
+parameter OPSIZE = 8;
+typedef reg[OPSIZE-1:0] opreg_t;
+
+opreg_t op_a, op_b;
+```
+&emsp;&emsp;一般来说，即使数据位宽不匹配，例如值被扩展或截断，system verilog 都允许在这些基本类型之间进行复制而不会给出警告。
+&emsp;&emsp;对新的数组类型的定义并不是很明显。为了使其变得明显，可以把数组的下标放在新的数组名称中。
+```verilog
+typedef int fixed_array5[5];
+fixed_array5 f5;
+
+initial begin 
+    foreach (f5[i])
+        f5[i] = i;
+end
+```
+
+### 2.10 创建用户自定义结构
+&emsp;&emsp;verilog 没有 struct。在 system verilog 中可以使用 struct 语句创建结构，跟 C 语言类似。
+#### 2.10.1 使用 struct 创建新类型
+&emsp;&emsp;创建一个新类型
+```verilog
+struct {bit[7:0] r,g,b}pixel;
+```
+&emsp;&emsp;上例声明中只创建了一个 pixel 变量。要想在端口和程序中共享它，则必须创建一个新的类型，如下例所示：
+```verilog
+typedef struct {bit[7:0] r,g,b} pixel_s;
+pexel_s my_pixel;
+```
+#### 2.10.2 对结构进行初始化
+&emsp;&emsp;可以在声明或者赋值过程中把多个值赋给一个结构体，就像数组那样，赋值时要把数值放到带单引号的大括号总。
+```verilog
+typedef struct { int a;
+                 byte b;
+                 shortint c;
+                 int d;} my_struct_s;
+my_struct_s st = '{32'haaaa_aaaa,
+                8'hbb,
+                16'hcccc,
+                32'hdddd_dddd};
+```
+#### 2.10.3 创建可容纳不同类型的联合
+```verilog
+typedef union {int i; real f;} num_u;
+num_u un;
+un.f = 0.0;
+```
+&emsp;&emsp;如果需要以若干不同的格式对同一寄存器进行频繁读写时，联合体相当有用。但是，不要滥用，尤其不要因为想节约存储空间就是用联合。与结构相比，联合可能可以节省几个字节，但是付出的代价却是必须创建并维护一个更加复杂的数据结构。
+
+#### 2.10.4 合并结构
+
+### 2.11 类型转换
+&emsp;&emsp;如果源变量和目标变量比特位分布完全相同，例如整数和枚举类型，那么他们之间可以直接相互赋值。如果比特位分布不同，例如字节数组和字数组，则需要使用流操作符对比特分布重新安排。
+#### 2.11.1 静态转换
+&emsp;&emsp;静态转换操作不对转换值进行检查。如下例所示，转换时指定目标类型，并在需要转换的表达式前加上单引号即可。注意：Verilog 对整数和实属类型，或者不同位宽的向量之间进行隐式转换。
+```verilog
+int i;
+real r;
+
+i = int'(10.0 - 0.1);   // 转换是非强制的
+r = real'(42);          // 转换是非强制的
+```
+#### 2.11.2 动态转换
+
+
+#### 2.11.3 流操作符
+
+
+### 2.12 枚举类型
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
