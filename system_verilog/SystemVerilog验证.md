@@ -355,14 +355,90 @@ function void print_checksum (const reg bit[31:0] a[]);
 &emsp;&emsp;SystemVerilog 允许不带 reg 进行数组参数的传递，这是数组会被复制到堆栈区里。这种操作的代价很高，除非是对特别小的数组。
 &emsp;&emsp;SystemVerilog 的语言参考手册规定了 reg 参数只能被用于带自动存储的子程序中。如果你对程序或模块指明了 automatic 属性，则整个子程序内部都是自动存储的。
 &emsp;&emsp;上例中也用到了 const 修饰符。其结果是，虽然数组变量 a 指向了调用程序中的数组，但子程序不能修改数组的值。如果试图改变数组的值，编译器将报错。
-&emsp;&emsp;向子程序传递数组时应尽量使用 reg 以获取最佳性能。如果不希望子程序改变数组的值，可以使用 const ref 类型。
+&emsp;&emsp;向子程序传递数组时应尽量使用 ref 以获取最佳性能。如果不希望子程序改变数组的值，可以使用 const ref 类型。
+&emsp;&emsp;ref 参数的第二个好处就是在任务里可以修改变量而且修改结果对调用它的函数随时可见。当你有若干并发执行的线程时，这可以给你提供一种简单的信息传递方式。
+&emsp;&emsp;如下例所示，一旦 bus.enable 有效，初始化块中的 thread2 块马上就可以获取来自存储器的数据，而不用等到 bus_read 任务完成总线上的数据处理后返回（这可能会需要若干时钟周期），由于参数 data 是以 ref 方式传递的，所以只要任务里的 data 一有变化， @data 语句就会触发。如果你把 data 声明为 output，则 @data 语句要等到总线处理完成后才能触发。
+```verilog
+task bus_read(input logic[31:0] addr,
+              ref   logic[31:0] data);
+    bus.request = 1'b1;
+    @(posedge bus.grant) bus.addr = addr;
 
+    // 等待来自存储器的数据
+    @(posedge bus.enable) data = bus.data;
 
+    bus.request = 1'b0;
+    @(negedge bus.grant);
+endtask
 
+logic[31:0] addr,data;
 
+initial
+    fork
+        bus_read(addr, data);
+        thread2 : begin
+            @data;      // 在数据变化时触发
+            $display("Read %h from bus", data);
+join
+```
+#### 3.4.4 参数的缺省值
+&emsp;&emsp;在 SystemVerilog 中，可以为参数指定一个缺省值，如果在调用时不指明参数，则使用缺省值。
 
+#### 3.4.5 采用名字进行参数传递
+&emsp;&emsp;如果有一个带着许多参数的任务或函数，其中一些参数有缺省值，而你又只想对它们中的部分参数进行设置，那么可以通过采用类似 port 的语法指定子程序参数名字的方式来指定一个自己，如下例所示：
+```verilog
+task many(input int a = 1, b = 2, c = 3, d = 4);
+    $display("%d %d %d %d", a, b, c, d);
+endtask
 
+initial begin
+    many(6,7,8,9);  // 6 7 8 9
+    many();         // 1 2 3 4
+    many(.c(5));    // 1 2 5 4
+    many(,6,.d(8)); // 1 6 3 8
+end
+```
 
+### 3.5 子程序的返回
+&emsp;&emsp;verilog 中子程序的结束方式比较简单，当你执行完子程序的最后一条语句，程序就会返回到调用子程序的代码上。此外函数还会返回一个值，该值被赋给与函数同名的变量。
+#### 3.5.1 return 语句
+&emsp;&emsp;SystemVerilog 增加了 return 语句。
+
+#### 3.5.2 从函数中返回一个数组
+&emsp;&emsp;第一种方式是定义一个数组类型，然后在函数的生命中使用该类型。
+```verilog
+typedef int fixed_array5[5];
+fixed_array5 f5;
+
+function fixed_array5 init(int start);
+    foreach (init[i])           // ???
+        init[i] = i + start;
+endfunction
+
+initial begin
+    f5 = init(5);
+    foreach (f5[i])
+        $display("f5[%0d]=%0d", i, f5[i]);
+end
+```
+&emsp;&emsp;该数组的值被拷贝到数组 f5 中。如果数组很大，可能会引起性能上的问题。
+&emsp;&emsp;另一种方式是通过引用来进行数组参数的传递。最简单的办法是以 reg 参数的形式将数组传递到函数里。
+```verilog
+function void init(reg int f[5], input int start);
+    foreach (f[i])
+        f[i] = i + start;
+endfunction
+
+int fa[5];
+initial begin
+    init (fa, 5);
+    foreach (fa[i])
+        $display("fa[%d]=%d", i, fa[i]);
+end
+```
+### 3.6 局部数据存储
+#### 3.6.1 自动存储
+&emsp;&emsp;在 verilog-2001 里，可以指定任务、函数和模块使用自动存储，从而迫使仿真器使用堆栈区存储局部变量。automatic
 
 
 
