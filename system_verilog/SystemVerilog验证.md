@@ -348,8 +348,14 @@ $display(2'(one) + one);        // D：1+1=2，采用强制类型转换
 #### 3.4.3 高级的参数类型
 &emsp;&emsp;Verilog 对参数的处理方式很简单：在子程序的开头把 input 和 inout 的值复制给本地变量，在子程序退出时则复制 output 和 inout 的值。除了标量以外，没有任何把存储器传递给 Verilog 子程序的办法。
 &emsp;&emsp;在 SystemVerilog 中，参数的传递方式可以指定为引用而不是复制。这种 ref 参数类型比 input、output 或 inout 更好用。
-
-
+&emsp;&emsp;下例是把数组传递给子程序：
+```verilog
+function void print_checksum (const reg bit[31:0] a[]);
+```
+&emsp;&emsp;SystemVerilog 允许不带 reg 进行数组参数的传递，这是数组会被复制到堆栈区里。这种操作的代价很高，除非是对特别小的数组。
+&emsp;&emsp;SystemVerilog 的语言参考手册规定了 reg 参数只能被用于带自动存储的子程序中。如果你对程序或模块指明了 automatic 属性，则整个子程序内部都是自动存储的。
+&emsp;&emsp;上例中也用到了 const 修饰符。其结果是，虽然数组变量 a 指向了调用程序中的数组，但子程序不能修改数组的值。如果试图改变数组的值，编译器将报错。
+&emsp;&emsp;向子程序传递数组时应尽量使用 reg 以获取最佳性能。如果不希望子程序改变数组的值，可以使用 const ref 类型。
 
 
 
