@@ -459,6 +459,7 @@ EP = EP 或 CHNENBLn
 * 如果具有最高优先级的通道之一已被具有更高优先级的通道抢占，但不想让步给具有相同优先级的通道（例如，它执行了 yield，而不是 yieldge），则它被选为下一个通道。
 * 属于最高优先级组的通道按其编号排序，该组中编号最高的通道成为下一个通道。 例如，如果优先级相同，则将先选择通道 31，然后再选择通道 30。 
   
+
 &emsp;&emsp;当当前通道需要使用 yield(ge) 或 done 指令重新调度时，上下文切换决策基于指令参数、当前通道号和优先级以及下一个通道号和优先级。 可能的情况都列在下表中。 灰色单元格对应于在 SDMA 的典型使用中不应发生的异常情况。 
 
 
@@ -697,6 +698,51 @@ SREST_LOCK_CLR 位也将被清除 LOCK 位的复位清除。
 &emsp;&emsp;零的低位选择字的最高有效半部分。 
 
 ................................
+
+##### 46.4.9.4 Context Switching-Programming
+&emsp;&emsp;每个通道都有一个单独的上下文，由八个通用寄存器和表示功能单元状态的附加寄存器组成。
+&emsp;&emsp;活动寄存器和功能单元包含活动通道的上下文。非活动通道的上下文存储在 SDMA RAM 中，它是 SDMA 地址空间的一部分。
+&emsp;&emsp;在所选择的上下文切换模式（Context Switching）的功能中，程序修改的寄存器可以在程序运行时保存在通道RAM空间中。在每个周期中，都可以对 RAM 进行写访问。
+&emsp;&emsp;在 done 或 yield(ge) 指令上，SDMA 进入“真正的”上下文切换。在其中一种动态模式中，先前未保存的修改寄存器以及 PC-Loop 寄存器存储到将要关闭的通道的上下文区域中。新的 PCLoop 寄存器从新通道的上下文区域加载。所有其他寄存器在程序执行时被恢复，优先考虑被解码指令使用的寄存器。因此，在最好的情况下，在这个上下文切换阶段只需要保存和恢复 PC 和循环寄存器，只需要五个 SDMA 周期。
+&emsp;&emsp;在静态模式下，上下文切换将所有寄存器存储在旧通道 RAM 空间中，并从新通道 RAM 空间中恢复所有寄存器。它需要 26 个 SDMA 周期。
+&emsp;&emsp;通道 i 的上下文存储器的地址是 CONTEXT_BASE + 24*i 或 CONTEXT_BASE + 32*i，其中 CONTEXT_BASE 等于 0x0800。下表展示了内存中通道上下文的布局： 
+
+| offset | 31                     | 30   | 29-16 | 15   | 14   | 13-0 |
+| ------ | ---------------------- | ---- | ----- | ---- | ---- | ---- |
+| 0      | SF                     | -    | RPC   | T    | -    | PC   |
+| 1      | LM                     |      | EPC   | DF   | -    | SPC  |
+| 2      | GR0                    |      |       |      |      |      |
+| 3      | GR1                    |      |       |      |      |      |
+| 4      | GR2                    |      |       |      |      |      |
+| 5      | GR3                    |      |       |      |      |      |
+| 6      | GR4                    |      |       |      |      |      |
+| 7      | GR5                    |      |       |      |      |      |
+| 8      | GR6                    |      |       |      |      |      |
+| 9      | GR7                    |      |       |      |      |      |
+| 10     | MDA(burst DMA)         |      |       |      |      |      |
+| 11     | MSA(burst DMA)         |      |       |      |      |      |
+| 12     | MS(burst DMA)          |      |       |      |      |      |
+| 13     | MD(burst DMA)          |      |       |      |      |      |
+| 14     | PDA (peripheral DMA)   |      |       |      |      |      |
+| 15     | PSA (peripheral DMA)   |      |       |      |      |      |
+| 16     | PS (peripheral DMA)    |      |       |      |      |      |
+| 17     | PD (peripheral DMA)    |      |       |      |      |      |
+| 18     |                        |      |       |      |      |      |
+| 19     |                        |      |       |      |      |      |
+| 20     | Reserved1              |      |       |      |      |      |
+| 21     | Reserved1              |      |       |      |      |      |
+| 22     | Reserved1              |      |       |      |      |      |
+| 23     | Reserved1              |      |       |      |      |      |
+| 24     | Scratch RAM (optional) |      |       |      |      |      |
+| 25     | Scratch RAM (optional) |      |       |      |      |      |
+| 26     | Scratch RAM (optional) |      |       |      |      |      |
+| 27     | Scratch RAM (optional) |      |       |      |      |      |
+| 28     | Scratch RAM (optional) |      |       |      |      |      |
+| 29     | Scratch RAM (optional) |      |       |      |      |      |
+| 30     | Scratch RAM (optional) |      |       |      |      |      |
+| 31     | Scratch RAM (optional) |      |       |      |      |      |
+
+......
 
 ### 46.7 Application Notes
 #### 46.7.1 Data Structures for Boot Code and Channel Scripts
