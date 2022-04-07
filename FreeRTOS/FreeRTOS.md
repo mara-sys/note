@@ -49,6 +49,12 @@
 &emsp;&emsp;优先级数字越低标识任务的优先级越低，0 的优先级最低，空闲任务的优先级最低，为 0。
 &emsp;&emsp;当宏 configUSE_TIME_SLICING 为 1 的时候，多个任务可以共用同一个优先级，数量不限。此时处于就绪态的优先级相同的任务就会使用时间片轮转调度器获取运行时间。
 
+
+
+  
+  
+  
+  
 ```c
 BaseType_t xTaskCreate(	TaskFunction_t pxTaskCode,
                         const char * const pcName,
