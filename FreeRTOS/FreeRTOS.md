@@ -50,11 +50,6 @@
 &emsp;&emsp;当宏 configUSE_TIME_SLICING 为 1 的时候，多个任务可以共用同一个优先级，数量不限。此时处于就绪态的优先级相同的任务就会使用时间片轮转调度器获取运行时间。
 
 
-
-  
-  
-  
-  
 ```c
 BaseType_t xTaskCreate(	TaskFunction_t pxTaskCode,
                         const char * const pcName,
@@ -73,7 +68,279 @@ TaskHandle_t xTaskCreateStatic(	TaskFunction_t pxTaskCode,
 ```
 
 ### 5.5 任务实现
-&emsp;&emsp;在使用Fre
+&emsp;&emsp;在使用 FreeRTOS 的过程中，我们要使用 xTaskCreate() 或 xTaskCreateStatic() 来创建任务，这两个函数的第一个参数`pxTaskCode`，就是这个人物的任务函数。
+&emsp;&emsp;FreeRTOS 官方给出的任务函数模板如下：
+```c
+void vATaskFunction(void *pvParameters)
+{
+    for(;;)
+    {
+        /* 任务应用程序 */
+        vTaskDelay();
+    }
+
+    /* 不能从任务函数中返回或退出，从任务函数中返回或退出的话就会调用 configASSERT(),
+       前提是你定义了 configASSERT()。如果一定要从任务函数中退出的话那一定要调用函数
+       vTaskDelete(NULL) 来删除此任务 */
+
+    vTaskDelete(NULL);
+}
+```
+
+1. 任务函数返回类型一定要为 void，人且人物的参数也是 void 指针类型的。
+2. 人物的具体执行过程就是一个大循环，for(;;) 作用和 while(1) 一样。
+3. 循环里面就是真正的任务代码。
+4. `vTaskDelay` 是 FreeRTOS 的延时函数，此处不一定要用延时函数，其他只要能让 FreeRTOS 发生切换的 API 函数都可以，比如请求信号量、队列等，甚至直接调用任务调度器。
+5. 任务函数一般不允许跳出循环，如果一定要跳出循环，那么循环外一定要调用`vTaskDelete(NULL)`删除此任务。
+
+&emsp;&emsp;其他的 RTOS 的任务函数基本也是这种方式。
+
+### 5.6 任务控制块
+&emsp;&emsp;FreeRTOS 每个任务都有一些属性需要存储，FreeRTOS 把这些属性结合到一起用一个结构体来表示，这个结构体叫做任务控制块：TCB_t，在使用函数 xTaskCreate() 创建任务的时候就会给每个人物分配一个任务控制块。老版本此结构体名字叫 tskTCB。当不适用某些功能的时候与其相关的变量就不参与编译。
+
+```c
+typedef struct tskTaskControlBlock
+{
+	volatile StackType_t	*pxTopOfStack;	/* 任务堆栈栈顶 */
+
+	#if ( portUSING_MPU_WRAPPERS == 1 )
+		xMPU_SETTINGS	xMPUSettings;		/* MPU 相关设置 */
+	#endif
+
+	ListItem_t			xStateListItem;	/* 状态列表项 */
+	ListItem_t			xEventListItem;		/* 事件列表项 */
+	UBaseType_t			uxPriority;			/* 任务优先级 */
+	StackType_t			*pxStack;			/* 任务堆栈起始地址 */
+	char				pcTaskName[ configMAX_TASK_NAME_LEN ];/* 任务名字 */
+
+	#if ( portSTACK_GROWTH > 0 )
+		StackType_t		*pxEndOfStack;		/* 任务堆栈栈底 */
+	#endif
+
+	#if ( portCRITICAL_NESTING_IN_TCB == 1 )
+		UBaseType_t		uxCriticalNesting;	/* 临界区嵌套深度 */
+	#endif
+
+	#if ( configUSE_TRACE_FACILITY == 1 ) /* trace 或 debug 时用到 */
+		UBaseType_t		uxTCBNumber;		
+		UBaseType_t		uxTaskNumber;		
+	#endif
+
+	#if ( configUSE_MUTEXES == 1 )
+		UBaseType_t		uxBasePriority;		/* 任务基础优先级，优先级反转时用到 */
+		UBaseType_t		uxMutexesHeld;
+	#endif
+
+	#if ( configUSE_APPLICATION_TASK_TAG == 1 )
+		TaskHookFunction_t pxTaskTag;
+	#endif
+
+	#if( configNUM_THREAD_LOCAL_STORAGE_POINTERS > 0 )
+		void *pvThreadLocalStoragePointers[ configNUM_THREAD_LOCAL_STORAGE_POINTERS ];
+	#endif
+
+	#if( configGENERATE_RUN_TIME_STATS == 1 )
+		uint32_t		ulRunTimeCounter;	/* 用来记录任务运行总时间 */
+	#endif
+
+	#if ( configUSE_NEWLIB_REENTRANT == 1 )
+		struct	_reent xNewLib_reent;   /* 定义一个 newlib 结构体变量 */
+	#endif
+
+	#if( configUSE_TASK_NOTIFICATIONS == 1 )    /* 任务通知相关变量 */
+		volatile uint32_t ulNotifiedValue;      /* 任务通知值 */
+		volatile uint8_t ucNotifyState;         /* 任务通知状态 */
+	#endif
+
+	#if( tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE != 0 )
+        /* 用来标记任务时动态创建的还是静态创建的，如果是静态创建的此变量
+           就为 pdTRUE，如果是动态创建的就为 pdFALSE */
+		uint8_t	ucStaticallyAllocated; 		
+	#endif
+
+	#if( INCLUDE_xTaskAbortDelay == 1 )
+		uint8_t ucDelayAborted;
+	#endif
+
+} tskTCB;
+
+typedef tskTCB TCB_t;
+
+```
+
+### 5.7 任务堆栈
+&emsp;&emsp;任务调度器在进行任务切换的时候会将当前任务的现场（CPU 寄存器值）保存在此任务的任务堆栈中，等到此任务下次运行的时候就会先用堆栈中保存的值来恢复现场，恢复现场以后任务就会接着从上次中断的地方开始运行。
+&emsp;&emsp;创建任务的时候需要给任务指定堆栈，如果使用函数 xTaskCreate() 创建任务那么任务堆栈就会有函数 xTaskCreate() 自动创建。如果使用函数 xTaskCreate() 创建任务需要自行定义任务堆栈，然后堆栈首地址作为函数的参数 puxStackBUffer 传递给函数。
+
+```c
+TaskHandle_t xTaskCreateStatic(	TaskFunction_t pxTaskCode,
+                                const char * const pcName,
+                                const uint32_t ulStackDepth,
+                                void * const pvParameters,
+                                UBaseType_t uxPriority,
+                                StackType_t * const puxStackBuffer,
+                                StaticTask_t * const pxTaskBuffer )
+```
+&emsp;&emsp;堆栈大小类型如下：
+```c
+#define portSTACK_TYPE      uint32_t
+
+typedef portSTACK_TYPE      StackType_t;
+```
+&emsp;&emsp;可以看出 StackType_t 类型的变量为 4 字节，那么任务的堆栈大小就应该是我们所定义的 4 倍。
+
+## 第六章 FreeRTOS 任务相关 API 函数
+### 6.1 任务创建和删除 API 函数
+
+| 函数                    | 描述                                                      |
+| ----------------------- | --------------------------------------------------------- |
+| xTaskCreate()           | 使用动态的方法创建一个任务                                |
+| xTaskCreateStatic()     | 使用静态的方法创建一个任务                                |
+| xTaskCreateRestricted() | 创建一个使用 MPU 进行限制的任务，相关内存使用动态内存分配 |
+| vTaskDelete()           | 删除一个任务                                              |
+
+1. 函数 xTaskCreate()
+&emsp;&emsp;此函数用来创建一个任务，任务需要 RAM 来保存与任务有关的状态信息（任务控制块），任务也需要一定的 RAM 来作为任务堆栈。如果使用此函数来创建任务的话，那么这些所需的 RAM 就会自动从 FreeRTOS 的堆中分配，因此必须提供内存管理文件，默认我们使用 heap_4.c 这个内存管理文件，而且宏 configSUPPORT_DYNAMIC_ALLOCATION 必须为 1。如果使用函数 xTaskCreateStatic() 创建的话这些 RAM 就需要用户来提供了。新创建的任务默认就是就绪态的，如果当前没有比它更高优先级的任务运行那么此任务就会立即进入运行态开始运行，不管在任务调度器启动前还是启动后，都可以创建任务。
+```c
+/**
+ * 参数：
+ * pxTaskCode：     任务函数
+ * pcName：         人物名字，一般用于追踪和调试，任务名字长度不能超过
+ *                  configMAX_TASK_NAME_LEN
+ * usStackDepth：   任务堆栈大小，注意实际申请到的堆栈是 usStackDepth 的 4 倍。
+ *                  其中空闲任务的堆栈大小为 configMINIMAL_STACK_SIZE.
+ * pvParameters：   传递给任务函数的参数
+ * uxPriotiry：     任务优先级，范围 0~configMAX_PRIORITIES-1
+ * pxCreatedTask：  任务句柄，任务创建成功以后会返回此任务的任务句柄，这个句柄
+ *                  其实就是任务的任务堆栈。此参数就用来保存这个任务句柄。其他
+ *                  API 函数可能会使用到这个句柄。
+ * 返回值：
+ * pdPASS：         任务创建成功
+ * errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY：任务创建失败，因为堆内存不足
+ */
+BaseType_t xTaskCreate(	TaskFunction_t pxTaskCode,
+                        const char * const pcName,
+                        const uint16_t usStackDepth,
+                        void * const pvParameters,
+                        UBaseType_t uxPriority,
+                        TaskHandle_t * const pxCreatedTask ) 
+```
+
+2. 函数 xTaskCreateStatic()
+&emsp;&emsp;此函数创建的任务所需的 RAM 需要用户来提供。如果要使用此函数的话需要将宏 configSUPPORT_STATIC_ALLOCATION 定义为 1。
+```c
+/**
+ * 参数：
+ * pxTaskCode：     任务函数
+ * pcName：         人物名字，一般用于追踪和调试，任务名字长度不能超过
+ *                  configMAX_TASK_NAME_LEN
+ * usStackDepth：   任务堆栈大小，由于本函数是静态方法创建任务，所以任务堆栈由用户给出。
+ *                  一般是个数组，此参数就是这个数组的大小。
+ * pvParameters：   传递给任务函数的参数
+ * uxPriotiry：     任务优先级，范围 0~configMAX_PRIORITIES-1
+ * puxStackBuffer： 任务堆栈，一般为数组，数组类型要为 StackType_t 类型。
+ * pxTaskBuffer：   任务控制块。
+ * 返回值：
+ * NULL：           任务创建失败，puxStackBuffer 或 pxTaskBuffer 为 NULl 的时候会导
+ *                  致这个错误的发生。
+ * 其他值：          任务创建成功，返回任务的任务句柄
+ */
+TaskHandle_t xTaskCreateStatic(	TaskFunction_t pxTaskCode,
+                                const char * const pcName,
+                                const uint32_t ulStackDepth,
+                                void * const pvParameters,
+                                UBaseType_t uxPriority,
+                                StackType_t * const puxStackBuffer,
+                                StaticTask_t * const pxTaskBuffer )
+```
+
+3. 函数 xTaskCreateRestricted()
+&emsp;&emsp;此函数也是用来创建任务的，只不过此函数要求所使用的 MCU 有 MPU（内存保护单元），用此函数创建的任务会受到 MPU 的保护。其他的功能和函数 xTaskCreate() 一样。
+```c
+/**
+ * 参数：
+ * TaskParameters_t：      指向一个结构体 TaskParameters_t，这个结构体描述了任务的任务函数、
+ *                         堆栈大小、优先级等。此结构体在文件 task.h 中有定义 
+ * pxCreatedTask：         任务句柄
+ * 返回值：
+ * pdPASS：     任务创建成功。
+ * 其他值：      任务未创建成功，很有可能是因为 FreeRTOS 的堆太小了
+ */
+BaseType_t xTaskCreateRestricted( const TaskParameters_t * const pxTaskDefinition, 
+                                TaskHandle_t *pxCreatedTask )
+```
+
+4. 函数 vTaskDelete()
+&emsp;&emsp;删除一个用函数 xTaskCreate() 或者 xTaskCreateStatic() 创建的任务，被删除了的任务不再存在，也就是说再也不会进入运行态。任务被删除以后就不能再使用此任务的句柄。如果此任务是使用动态方法创建的，那么此任务被删除以后此任务之前申请的堆栈和控制块会在空闲任务中被释放掉，因此当调用此函数删除任务以后必须给空闲任务一定的运行时间。
+&emsp;&emsp;只有那些由内核分配给任务的内存才会在任务被删除以后自动的释放掉，用户分配给人物的内存需要用户自行释放掉，否则会导致内存泄漏。
+```c
+/* 
+ * xTaskToDelete：      要删除的任务的任务句柄
+ * 返回值：
+ * 无
+ */
+vTaskDelete(TaskHandle_t xTaskToDelete)
+```
+
+### 6.4 任务挂起和恢复 API 函数
+&emsp;&emsp;当某个任务要停止运行一段时间的话就将这个任务挂起，当要重新运行这个任务的话就恢复这个任务的运行。
+
+| 函数                 | 描述                             |
+| -------------------- | -------------------------------- |
+| vTaskSuspend()       | 挂起一个任务                     |
+| vTaskResume()        | 恢复一个任务的运行               |
+| xTaskResumeFromISR() | 中断服务函数中恢复一个任务的运行 |
+
+1. 函数 vTaskSuspend()
+&emsp;&emsp;此函数用于将某个任务设置为挂起状态，进入挂起态的任务永远都不会进入运行态。退出挂起态的唯一方法就是调用任务回复函数 vTaskResume() 或 xTaskResumeFromISR()。函数原型如下：
+```c
+/* 
+ * xTaskToSuspend： 要挂起的任务的任务句柄，创建任务的时候会为每个任务分配一个任务句柄。
+                    如果使用函数 xTaskCreate() 创建任务的话那么函数的参数 pxCreatedTask
+                    就是此任务的任务句柄，如果使用函数 xTaskCreateStatic() 创建任务的话
+                    那么函数的返回值就是此任务的任务句柄。也可以通过函数 xTaskGetHandle() 
+                    来根据任务名字来获取某个任务的任务句柄。
+                    注意：如果参数为 NULL 的话表示挂起任务自己。
+ * 返回值：无
+ */
+void vTaskSuspend( TaskHandle_t xTaskToSuspend )
+```
+
+2. 函数 vTaskResume()
+&emsp;&emsp;将一个任务从挂起态恢复到就绪态，只有通过函数 vTaskSuspend() 设置为挂起态的任务才可以使用 vTaskRexume() 恢复。
+```c
+void vTaskResume( TaskHandle_t xTaskToResume )
+```
+
+3. 函数 xTaskResumeFromISR()
+&emsp;&emsp;此函数是 vTaskResume() 的中断版本，用于在中断服务函数中恢复一个任务。
+```c
+/* 
+ * xTaskToResume：      要恢复的任务的任务句柄
+ * 返回值：
+ * pdTRUE：     恢复运行的任务的任务优先级等于或高于正在运行的任务（被中断打断
+                的任务），这意味着再退出中断服务函数以后必须进行一次上下文切换
+ * pdFALSE：    恢复运行的任务的任务优先级低于当前正在运行的任务（被中断打断的
+                任务），这意味着在退出中断服务函数以后不需要进行上下文切换
+ */
+BaseType_t xTaskResumeFromISR( TaskHandle_t xTaskToResume )
+```
+
+### 第七章 FreeRTOS 列表和列表项
+&emsp;&emsp;列表和列表项是 FreeRTOS 的一个数据结构，FreeRTOS 大量使用了列表和列表项。
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
