@@ -509,10 +509,26 @@ UBaseType_t uxListRemove( ListItem_t * const pxItemToRemove )
 &emsp;&emsp;注意：列表项的删除只是将指定的列表项从列表中删除，如果这个列表项是动态内存分配的话，此函数并不会将这个列表项的内存给释放掉。
 
 ### 7.6 列表的遍历
+```c
+#define listGET_OWNER_OF_NEXT_ENTRY( pxTCB, pxList )										\
+{																							\
+List_t * const pxConstList = ( pxList );													\
+	/* Increment the index to the next item and return the item, ensuring */				\
+	/* we don't return the marker used at the end of the list.  */							\
+	( pxConstList )->pxIndex = ( pxConstList )->pxIndex->pxNext;							\
+	if( ( void * ) ( pxConstList )->pxIndex == ( void * ) &( ( pxConstList )->xListEnd ) )	\
+	{																						\
+		( pxConstList )->pxIndex = ( pxConstList )->pxIndex->pxNext;						\
+	}																						\
+	( pxTCB ) = ( pxConstList )->pxIndex->pvOwner;											\
+}
+```
+&emsp;&emsp;上面的函数，每调用一次，这个函数列表的 pxIndex 变量就会指向下一个列表项，并且返回这个列表项的 pxOwner 变量值。
+&emsp;&emsp;如果 pxIndex 变量指向了列表的 xListEnd 成员变量，表示到了列表末尾。如果到了列表末尾的话就跳过 xListEnd，pxIndex 再一次重新指向处于列表头的列表项。
 
 
-
-
+## 第八章 FreeRTOS 调度器开启和任务相关函数详解
+### 8.2 调度器开启过程分析
 
 
 
