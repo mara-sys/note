@@ -328,15 +328,123 @@ BaseType_t xTaskResumeFromISR( TaskHandle_t xTaskToResume )
 
 ### 第七章 FreeRTOS 列表和列表项
 &emsp;&emsp;列表和列表项是 FreeRTOS 的一个数据结构，FreeRTOS 大量使用了列表和列表项。
+### 7.1 列表和列表项
+&emsp;&emsp;列表用来跟踪 FreeRTOS 中的任务。与列表相关的东西都在文件 list.c 和 list.h 中。
+&emsp;&emsp;列表和列表项结构体如下：
+![列表原始结构体](./FreeRTOS_images/070101_list_origin_structure.svg)  
+&emsp;&emsp;其中`List_t`是列表结构体，`ListItem_t`列表项，`MiniListItem_t`是迷你列表项。  
+&emsp;&emsp;结合宏定义简化后的列表结构体如下所示：
+![列表真实结构体](./FreeRTOS_images/070102_list_real_structure.svg)  
+1. 列表 List_t
+* (1)、(5)：都是用来检查列表完整性的，默认是关闭的，如果用到的话需要将宏`configUSE_LIST_DATA_INTEGRITY_CHECK_BYTES`设置为 1。（之后不讨论这个功能）
+* (2)：用来记录列表中列表项的数量。
+* (3)：用来记录当前列表项索引号，用于遍历列表。
+* (4)：列表项中最后一个列表项，用来表示列表结束。
 
+2. 列表项 ListItem_t
+* (1)、(7)：用法和列表一样，用来检查列表项完整性的。（之后不讨论这个功能）
+* (2)：列表项的值
+* (3)：指向下一个列表项
+* (4)：指向前一个列表项，与 (3) 配合实现类似双向链表的功能
+* (5) pvOwner：记录此列表项归谁拥有，通常是任务控制块
+* (6) pvContainer：用来记录此列表项归哪个列表。
 
+3. 迷你列表项 MiniListItem_t
+* (1)：用于检查迷你列表项的完整性
+* (2)：记录列表列表项值
+* (3)：指向下一个列表项
+* (4)：指向上一个列表项
 
+&emsp;&emsp;可以看出迷你列表项只是比列表项少了几个成员，没有本质区别。只是因为有些情况下不需要列表项这么全的功能，可能只需要其中几个成员变量，如果此时用列表项的话会造成内存浪费。比如上面列表结构体中最后一个列表项的成员变量就是 MiniListItem_t 类型的。
 
+### 7.2 列表和列表项初始化
+#### 7.2.1 列表初始化
+&emsp;&emsp;列表初始化是通过函数`vListInitialise()`完成的，在 list.c 中定义：
+```c
+void vListInitialise( List_t * const pxList )
+{
+    pxList->pxIndex = ( ListItem_t * ) &( pxList->xListEnd );               // (1)
+    pxList->xListEnd.xItemValue = portMAX_DELAY;                            // (2)
+    pxList->xListEnd.pxNext = ( ListItem_t * ) &( pxList->xListEnd );       // (3)
+    pxList->xListEnd.pxPrevious = ( ListItem_t * ) &( pxList->xListEnd );   // (4)
+    pxList->uxNumberOfItems = ( UBaseType_t ) 0U;                           // (5)
+    listSET_LIST_INTEGRITY_CHECK_1_VALUE( pxList );                         // (6)
+    listSET_LIST_INTEGRITY_CHECK_2_VALUE( pxList );                         // (7)
+}
+```
+&emsp;&emsp;列表结构体中一共有五个成员变量，此函数就是初始化这五个成员变量。
+1. (1)：pxIndex 是一个指向列表项的指针，此时列表中只有一个列表项——`xListEnd`，所以将 pxIndex 指向 xListEnd。
+2. (2)、(3)、(4)：都是在初始化`xListEnd`。 xListEnd 一共有四个成员，这里初始化了三个，pxNext 下一个列表项和 pxPrevious 前一个列表项都指向自身，因为此时只有一个列表项。xItemValue 根据 MCU 的不同初始化为不同的值，可以是 0xffff 或 0xffff_ffff。在这里为 0xffff_ffff。
+3. (6)、(7)：用于完整性检查的字段。将其赋值为 0x5a5a 或 0x5a5a5a5a。
 
+&emsp;&emsp;列表初始化以后如图所示：
+![列表初始化](./FreeRTOS_images/070201_列表初始化.png)  
 
+#### 7.2.2 列表项初始化
+&emsp;&emsp;列表项初始化由函数`vListInitialiseItem()`来完成。
+```c
+void vListInitialiseItem( ListItem_t * const pxItem )
+{
+	pxItem->pvContainer = NULL;
 
+    /* 初始化用于完整性检查的变量，值为 0x5a5a_5a5a */
+	listSET_FIRST_LIST_ITEM_INTEGRITY_CHECK_VALUE( pxItem );
+	listSET_SECOND_LIST_ITEM_INTEGRITY_CHECK_VALUE( pxItem );
+}
+```
+&emsp;&emsp;有人会问，列表项的成员变量比列表要多，为什么初始化函数并没有完全初始化。这是因为列表项要根据实际使用情况来初始化，比如任务创建函数就会对堆栈任务中的`xStateListItem`和`xEventListItem`这两个列表项中的其他成员变量再做初始化。
 
+### 7.3 列表项插入
 
+```c
+/* 
+ * pxList：             列表项要插入的列表
+ * pxNewListItem：      要插入的列表项
+ * 返回值：无
+ */
+void vListInsert( List_t * const pxList, ListItem_t * const pxNewListItem )
+{
+    ListItem_t *pxIterator;
+    const TickType_t xValueOfInsertion = pxNewListItem->xItemValue;     // (1)
+
+	listTEST_LIST_INTEGRITY( pxList );                                  // (2)
+	listTEST_LIST_ITEM_INTEGRITY( pxNewListItem );
+
+	if( xValueOfInsertion == portMAX_DELAY )                            // (3)
+	{
+		pxIterator = pxList->xListEnd.pxPrevious;                       // (4)
+	}
+	else
+	{
+		for( pxIterator = ( ListItem_t * ) &( pxList->xListEnd );       // (5)
+            pxIterator->pxNext->xItemValue <= xValueOfInsertion; 
+            pxIterator = pxIterator->pxNext ) 
+		{ /* 空循环，只为定位要插入的位置 */ }
+	}
+
+	pxNewListItem->pxNext = pxIterator->pxNext;                         // (6)
+	pxNewListItem->pxNext->pxPrevious = pxNewListItem;
+	pxNewListItem->pxPrevious = pxIterator;
+	pxIterator->pxNext = pxNewListItem;
+
+	pxNewListItem->pvContainer = ( void * ) pxList;                     // (7)
+
+	( pxList->uxNumberOfItems )++;                                      // (8)
+}
+```
+&emsp;&emsp;此函数将列表项`pxNewListItem`插入到列表`pxList`中。插入的位置由列表项中成员变量`xItemValue`来决定。列表项的插入根据`xItemValue`的值按照升序的方式排列。
+&emsp;&emsp;新插入的列表项要插入的位置就在 pxIterator 之后，pxIterator->pxNext 之前。
+1. (1)：获取列表项成员 xItemValue 的值，根据此值确定列表项要插入的位置。
+2. (2)：检查列表和列表项中用于完整性检查的变量值是否被改变。这两行代码需要实现函数`configASSERT()`。
+3. (3)：如果要插入的列表项的值等于`portMAX_DELAY`，也就是说列表项值为最大值，那么要插入的位置就是列表的最末尾了。
+4. (4)：如果要插入的列表项的列表值和 xListEnd 的列表值相同，那么要插入的列表项会被放到 xListEnd 前面。
+5. (5)：如果要插入的列表项的值不等于 portMAX_DELAY 那么就需要在列表中一个一个找，此循环就是用于定位位置的，所以循环里什么也没做。
+6. 在查找过程中专门将列表值为 portMAX_DELAY 的列表项提取出来是因为如果不提取出来，遇到列表值为 portMAX_DELAY 的列表项，后面的 for 循环就永远跳不出来。
+7. (6)：这四行代码就是具体的插入过程，将要插入的列表项插入到经由 pxIterator 定位的位置后，插入到 pxIterator->pxNext 之前。
+8. (7)：记录此列表项属于哪个列表。
+9. (8)：列表成员变量 uxNumberOfItems 加一，表示又添加了一个列表项。
+
+### 7.4 列表项末尾插入
 
 
 
