@@ -445,13 +445,70 @@ void vListInsert( List_t * const pxList, ListItem_t * const pxNewListItem )
 9. (8)：列表成员变量 uxNumberOfItems 加一，表示又添加了一个列表项。
 
 ### 7.4 列表项末尾插入
+```c
+/* 
+ * pxList：         列表项要插入的列表
+ * pxNewListItem：  要插入的列表项
+ */
+void vListInsertEnd( List_t * const pxList, ListItem_t * const pxNewListItem )
+{
+    ListItem_t * const pxIndex = pxList->pxIndex;
+    
+    listTEST_LIST_INTEGRITY( pxList );
+    listTEST_LIST_ITEM_INTEGRITY( pxNewListItem );
+    
+    pxNewListItem->pxNext = pxIndex;
+    pxNewListItem->pxPrevious = pxIndex->pxPrevious;
+    
+    mtCOVERAGE_TEST_DELAY();
+    
+    pxIndex->pxPrevious->pxNext = pxNewListItem;
+    pxIndex->pxPrevious = pxNewListItem;
+    
+    pxNewListItem->pvContainer = ( void * ) pxList;
+    
+    ( pxList->uxNumberOfItems )++;
+}
+```
+&emsp;&emsp;此函数和上面的插入函数基本一致。
+&emsp;&emsp;需要注意的是，此函数是往列表的末尾添加列表项，我们知道列表中 xListEnd 成员变量表示列表末尾，那么此函数插入的列表项是不是就是插入到 xListEnd 的前面后后面呢？这个是不一定的。
+&emsp;&emsp;**这里所谓的末尾要根据列表成员变量 pxIndex 来确定**。pxIndex 成员变量是用来遍历列表的，pxIndex 所指向的列表项就是要遍历的开始列表项，也就是说 pxIndex 所指向的列表项就代表列表头。由于是个环形列表，所以新的列表项就应该插入到 pxIndex 所指向的列表项的前面。
 
+### 7.5 列表项的删除
 
+```c
+/* 
+ * pxItemToRemove：         要删除的列表项
+ * 返回值：                 返回删除列表项以后的列表剩余列表项数目
+ */
+UBaseType_t uxListRemove( ListItem_t * const pxItemToRemove )
+{
+    List_t * const pxList = ( List_t * ) pxItemToRemove->pvContainer;
 
+	pxItemToRemove->pxNext->pxPrevious = pxItemToRemove->pxPrevious;
+	pxItemToRemove->pxPrevious->pxNext = pxItemToRemove->pxNext;
 
+	mtCOVERAGE_TEST_DELAY();
 
+	/* 如果 pxIndex 恰好指向了要删除的 item，将其指向一个有意义的 item */
+	if( pxList->pxIndex == pxItemToRemove )
+	{
+		pxList->pxIndex = pxItemToRemove->pxPrevious;
+	}
+	else
+	{
+		mtCOVERAGE_TEST_MARKER();
+	}
 
+	pxItemToRemove->pvContainer = NULL;
+	( pxList->uxNumberOfItems )--;
 
+	return pxList->uxNumberOfItems;
+}
+```
+&emsp;&emsp;注意：列表项的删除只是将指定的列表项从列表中删除，如果这个列表项是动态内存分配的话，此函数并不会将这个列表项的内存给释放掉。
+
+### 7.6 列表的遍历
 
 
 
