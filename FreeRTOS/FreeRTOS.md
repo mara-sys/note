@@ -107,7 +107,7 @@ typedef struct tskTaskControlBlock
 		xMPU_SETTINGS	xMPUSettings;		/* MPU 相关设置 */
 	#endif
 
-	ListItem_t			xStateListItem;	/* 状态列表项 */
+	ListItem_t			xStateListItem;	    /* 状态列表项 */
 	ListItem_t			xEventListItem;		/* 事件列表项 */
 	UBaseType_t			uxPriority;			/* 任务优先级 */
 	StackType_t			*pxStack;			/* 任务堆栈起始地址 */
@@ -232,7 +232,7 @@ BaseType_t xTaskCreate(	TaskFunction_t pxTaskCode,
 /**
  * 参数：
  * pxTaskCode：     任务函数
- * pcName：         人物名字，一般用于追踪和调试，任务名字长度不能超过
+ * pcName：         任务名字，一般用于追踪和调试，任务名字长度不能超过
  *                  configMAX_TASK_NAME_LEN
  * usStackDepth：   任务堆栈大小，由于本函数是静态方法创建任务，所以任务堆栈由用户给出。
  *                  一般是个数组，此参数就是这个数组的大小。
@@ -529,17 +529,232 @@ List_t * const pxConstList = ( pxList );													\
 
 ## 第八章 FreeRTOS 调度器开启和任务相关函数详解
 ### 8.2 调度器开启过程分析
+&emsp;&emsp;vTaskStartScheduler() 函数是开启任务调度器的，部分代码如下：
+```c
+void vTaskStartScheduler( void )
+{
+    BaseType_t xReturn;
+
+	/* Add the idle task at the lowest priority. */
+	#if( configSUPPORT_STATIC_ALLOCATION == 1 )
+	{
+		StaticTask_t *pxIdleTaskTCBBuffer = NULL;
+		StackType_t *pxIdleTaskStackBuffer = NULL;
+		uint32_t ulIdleTaskStackSize;
+
+		/* 空闲任务是使用用户提供的 RAM 创建的 - 获取 RAM 的地址然后创建空闲任务。  */
+		vApplicationGetIdleTaskMemory( &pxIdleTaskTCBBuffer, &pxIdleTaskStackBuffer, &ulIdleTaskStackSize );
+		xIdleTaskHandle = xTaskCreateStatic(	prvIdleTask,
+												"IDLE",
+												ulIdleTaskStackSize,
+												( void * ) NULL,
+												( tskIDLE_PRIORITY | portPRIVILEGE_BIT ),
+												pxIdleTaskStackBuffer,
+												pxIdleTaskTCBBuffer ); 
+
+		if( xIdleTaskHandle != NULL )
+		{
+			xReturn = pdPASS;
+		}
+		else
+		{
+			xReturn = pdFAIL;
+		}
+	}
+	#else
+	{
+		/* 空闲任务是使用动态分配的 RAM 创建的。  */    // (1)
+		xReturn = xTaskCreate(	prvIdleTask,
+								"IDLE", configMINIMAL_STACK_SIZE,
+								( void * ) NULL,
+								( tskIDLE_PRIORITY | portPRIVILEGE_BIT ),
+								&xIdleTaskHandle ); 
+	}
+	#endif 
+
+	#if ( configUSE_TIMERS == 1 )                   // 使用软件定时器使能
+	{
+		if( xReturn == pdPASS )
+		{
+			xReturn = xTimerCreateTimerTask();      // (2)
+		}
+		else
+		{
+			mtCOVERAGE_TEST_MARKER();
+		}
+	}
+	#endif
+
+	if( xReturn == pdPASS )
+	{
+		/* 此处关闭中断，以确保在调用 xPortStartScheduler() 之前或期间不会发生滴答声。 
+        创建任务的堆栈包含一个状态字，其中打开了中断，因此当第一个任务开始运行时，
+        中断将自动重新启用。  */
+		portDISABLE_INTERRUPTS();                   // (3)
+
+		#if ( configUSE_NEWLIB_REENTRANT == 1 )
+		{
+			_impure_ptr = &( pxCurrentTCB->xNewLib_reent );
+		}
+		#endif 
+
+		xNextTaskUnblockTime = portMAX_DELAY;
+		xSchedulerRunning = pdTRUE;                 // (4)
+		xTickCount = ( TickType_t ) 0U;
+
+		portCONFIGURE_TIMER_FOR_RUN_TIME_STATS();   // (5)
+
+		if( xPortStartScheduler() != pdFALSE )
+		{
+			/* 如果调度器启动成功的话就不会运行到这里 */
+		}
+		else
+		{
+			/* 除非调用函数 xTaskEndScheduler()，否则不会运行到这里 */
+		}
+	}
+	else
+	{
+		/* 程序运行到这里只能说明一点，那就是系统内核没有启动成功。原因是在创建
+        空闲任务或者定时器任务的时候没有足够的内存 */
+		configASSERT( xReturn != errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY );
+	}
+
+	/* 防止编译器报错，比如宏 INCLUDE_xTaskGetIdleTaskHandle 定义为 0 的话,
+	编译器就会提示 xIdleTaskHandle 未使用 */
+	( void ) xIdleTaskHandle;
+}
+```
+1. (1)：创建空闲任务，优先级为 0，也就是说空闲任务的优先级为最低。
+2. (2)：使用软件定时器的话还需要通过函数 xTimerCreateTimerTask() 来创建定时器服务任务。定时器服务任务的具体创建过程就是在此函数中完成。
+3. (3)：关闭中断，在 SVC 中断服务函数 vPortSVCHandler() 中会打开中断。
+4. (4)：变量 xSchedulerRunning 设置为 pdTRUE，表示调度器开始运行。
+5. (5)：当宏 configGENERATE_RUN_TIME_STATS 为 1 的时候说明使能时间统计功能，此时需要用户实现宏 portCONFIGURE_TIMER_FOR_RUN_TIME_STATS，此宏用来配置一个定时器/计数器。
+6. (6)：调用函数 xPortStartScheduler() 来初始化跟调度器启动有关的硬件，比如滴答定时器、FPU 单元和 PendSV 中断等。
+
+#### 8.2.2 内核相关硬件初始化函数分析
+&emsp;&emsp;FreeRTOS 系统时钟是由滴答定时器来提供的，而且任务切换也会用到 PendSV 中断，这些硬件的初始化是由函数 xPortStartScheduler 来完成，缩减后的函数代码如下：
+```c
+BaseType_t xPortStartScheduler( void )
+{
+	portNVIC_SYSPRI2_REG |= portNVIC_PENDSV_PRI;    // (1)
+	portNVIC_SYSPRI2_REG |= portNVIC_SYSTICK_PRI;   // (2)
+	vPortSetupTimerInterrupt();                     // (3)
+	uxCriticalNesting = 0;                          // (4)
+	prvEnableVFP();                                 // (5)
+	*( portFPCCR ) |= portASPEN_AND_LSPEN_BITS;     // (6)
+	prvStartFirstTask();                            // (7)
+
+	/* 代码正常执行的话是不会到这里的 */
+	return 0;
+}
+```
+&emsp;&emsp;上面的赋值基本都是直接操作硬件寄存器的。
+1. (1)：
+
+### 8.3 任务创建过程分析
+#### 8.3.4 添加任务到就绪列表
+&emsp;&emsp;任务创建完成以后就会被添加到就绪列表中，FreeRTOS 使用不同的列表表示任务的不同状态，在文件 task.c 中就定义了多个全局列表来完成不同的功能，这些列表如下：
+```c
+PRIVILEGED_DATA static List_t pxReadyTasksLists[ configMAX_PRIORITIES ];
+PRIVILEGED_DATA static List_t xDelayedTaskList1;
+PRIVILEGED_DATA static List_t xDelayedTaskList2;
+PRIVILEGED_DATA static List_t * volatile pxDelayedTaskList;		
+PRIVILEGED_DATA static List_t * volatile pxOverflowDelayedTaskList;	
+PRIVILEGED_DATA static List_t xPendingReadyList;					
+```
+&emsp;&emsp;列表数组 pxReadyTasksLists[] 就是任务就绪列表，数组大小为 configMAX_PRIORITIES，也就是说一个优先级一个列表，这样相同优先级的任务就是用一个列表。将一个新创建的任务添加到就绪列表中通过函数 prvAddNewTaskToReadyList() 来完成。函数如下：
+```c
+static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
+{
+	/* 确保在更新列表时中断不会访问任务列表。  */
+	taskENTER_CRITICAL();
+	{
+		uxCurrentNumberOfTasks++;                       // (1)
+		if( pxCurrentTCB == NULL )
+		{
+			/* 没有其他任务，或者所有其他任务都处于挂起状态时，将此任务作为当前任务。 */
+			pxCurrentTCB = pxNewTCB;
+
+			if( uxCurrentNumberOfTasks == ( UBaseType_t ) 1 )
+			{
+				/* 这是要创建的第一个任务，因此需要进行初步初始化。 
+                如果此调用失败，我们将无法恢复，但我们会报告失败。 */
+				prvInitialiseTaskLists();               // (2)
+			}
+			else
+			{ mtCOVERAGE_TEST_MARKER(); }
+		}
+		else
+		{
+			/* 如果调度程序尚未运行，则将此任务设为当前任务
+            （如果它是目前要创建的最高优先级任务）。 */
+			if( xSchedulerRunning == pdFALSE )
+			{
+                /* 新任务的任务优先级比正在运行的任务优先级高 */
+				if( pxCurrentTCB->uxPriority <= pxNewTCB->uxPriority )
+				{
+					pxCurrentTCB = pxNewTCB;            // (3)
+				}
+				else
+				{ mtCOVERAGE_TEST_MARKER(); }
+			}
+			else
+			{ mtCOVERAGE_TEST_MARKER(); }
+		}
+
+		uxTaskNumber++;         /* 用作任务控制块编号 */
+
+		#if ( configUSE_TRACE_FACILITY == 1 )
+		{
+			/* 将计数器添加到 TCB 中，仅用于跟踪。 */
+			pxNewTCB->uxTCBNumber = uxTaskNumber;
+		}
+		#endif 
+		traceTASK_CREATE( pxNewTCB );
+
+		prvAddTaskToReadyList( pxNewTCB );              // (4)
+
+		portSETUP_TCB( pxNewTCB );
+	}
+	taskEXIT_CRITICAL();
+
+	if( xSchedulerRunning != pdFALSE )
+	{
+		/* 如果创建的任务的优先级高于当前任务，那么它应该现在运行。  */
+		if( pxCurrentTCB->uxPriority < pxNewTCB->uxPriority )
+		{
+			taskYIELD_IF_USING_PREEMPTION();            // (5)
+		}
+		else
+		{ mtCOVERAGE_TEST_MARKER(); }
+	}
+	else
+	{ mtCOVERAGE_TEST_MARKER(); }
+}
+```
+1. (1)：变量 uxCurrentNumberOfTasks 为全局变量，用来统计任务数量
+2. (2)：变量 uxCurrentNumberOfTasks 为 1 说明正在创建的任务是第一个任务。那么就需要先初始化相应的列表，通过调用函数 prvInitialiseTaskLists() 来初始化相应的列表。这个函数很简单，本质就是调用列表初始化函数 vListInitialise() 来初始化几个列表。
+3. (3)：新创建的任务优先级比正在运行的任务优先级高，所以需要修改 pxCurrentTCB 为新建任务的任务控制块。
+4. (4)：调用函数 prvAddTaskToReadyList() 将任务添加到就序列表中，这个其实是个宏，如下：
+```c
+#define prvAddTaskToReadyList( pxTCB )                  \
+	traceMOVED_TASK_TO_READY_STATE( pxTCB );            \
+	taskRECORD_READY_PRIORITY( ( pxTCB )->uxPriority ); \
+	vListInsertEnd( &( pxReadyTasksLists[ ( pxTCB )->uxPriority ] ), &( ( pxTCB )->xStateListItem ) ); \
+	tracePOST_MOVED_TASK_TO_READY_STATE( pxTCB )
 
 
+#define taskRECORD_READY_PRIORITY( uxPriority )         \
+{                                                       \
+    if( ( uxPriority ) > uxTopReadyPriority )           \
+    {                                                   \
+        uxTopReadyPriority = ( uxPriority );            \
+    }                                                   \
+} 
+```
+&emsp;&emsp;宏 taskRECORD_READY_PRIORITY() 用来记录处于就绪态的任务，具体是通过操作全局变量 uxTopReadyPriority 来实现的。这个变量用来查找处于就绪态的优先级最高任务。
+&emsp;&emsp;然后使用函数 vListInsertEnd 将任务添加到就绪列表末尾。
 
-
-
-
-
-
-
-
-
-
-
+5. (5)：如果新任务的任务优先级最高，而且调度器已经开始正常运行了，那么久调用函数 taskYIELD_IF_USING_PREEMPTION() 完成一次任务切换。
 
