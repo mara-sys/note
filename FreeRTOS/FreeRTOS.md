@@ -767,6 +767,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 ## 第十二章 FreeRTOS 时间管理
 &emsp;&emsp;在使用 FreeRTOS 的过程中我们通常会在一个任务函数中使用延时函数对这个任务延时，当执行延时函数的时候就会进行任务切换，并且此任务就会进入阻塞态，直到延时完成，任务重新进入就绪态。
 
+## 第十三章 FreeRTOS 队列
 
 
 
