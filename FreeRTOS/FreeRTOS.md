@@ -789,7 +789,7 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 * 阻塞时间为 portMAX_DELAY：任务会一直进入阻塞态等待，直到接收到数据为止。
 
 4. 入队阻塞
-
+&emsp;&emsp;入队说的是向队列中发送消息，和出队阻塞一样，当一个任务向队列发送消息也可以设置阻塞时间。例如任务 B 向队列 Q 发送消息，但此时队列 Q 是满的，肯定会发送失败。
 
 
 
