@@ -1190,30 +1190,133 @@ BaseType_t xQueuePeekFromISR(QueueHandle_t xQueue,
 ### 14.1 信号量简介
 &emsp;&emsp;信号量常常用于对共享资源的访问和任务同步，信号量的另一个重要的应用场合就是任务同步，用于任务与任务或中断与任务之间的同步。
 ### 14.2 二值信号量
+#### 14.2.1 二值信号量简介
 &emsp;&emsp;二值信号量通常用于互斥访问或同步，二值信号量和互斥信号量非常类似，但是还有一些细微的差别，互斥信号量拥有优先级继承机制，二值信号量没有优先级继承。因此二值信号量更适合用于同步（任务与任务或任务与中断的同步），而互斥信号量适合用于简单的互斥访问。
 &emsp;&emsp;和队列一样，信号量 API 函数允许设置一个阻塞时间，阻塞时间是当任务获取信号量的时候由于信号量无效从而导致任务进入阻塞态的最大时钟节拍数。如果多个任务同时阻塞在同一个信号量上的话那么优先级最高的那个任务优先获得信号量，这样当信号量有效的时候高优先级的任务就会解除阻塞状态。
 &emsp;&emsp;二值信号量其实就是一个只有一个队列项的队列，这个特殊的队列要么是满的，要么是空的。任务和中断使用这个特殊队列不用在乎队列中存的是什么消息，只需要知道这个队列是满的还是空的。可以利用这个机制来完成任务与中断之间的同步。
 
+#### 14.2.2 创建二值信号量
+&emsp;&emsp;想要使用二值信号量就必须先创建二值信号量，创建函数如下表所示：
 
+| 函数                           | 描述                                                         |
+| ------------------------------ | ------------------------------------------------------------ |
+| vSemaphoreCreateBinary()       | 动态创建二值信号量，这个是老版本 FreeRTOS 中使用的创建二值信号量的 API 函数 |
+| xSemaphoreCreateBinary()       | 动态创建二值信号量，新版 FreeRTOS 使用此函数创建二值信号量   |
+| xSemaphoreCreateBinaryStatic() | 静态创建二值信号量                                           |
 
+1. 函数 vSemaphoreCreateBinary
+&emsp;&emsp;具体创建过程由函数 xQueueGenericCreate() 来完成，定义如下：
+```c
+/* 
+ * xSemaphore：     保存创建成功的二值信号量句柄
+ * 
+ * 返回值：
+ * NULL：           二值信号量创建失败
+ * 其他值：         二值信号量创建成功
+ */
+void vSemaphoreCreateBinary( SemaphoreHandle xSemaphore)
+```
 
+2. 函数 xSemaphoreCreateBinary
+&emsp;&emsp;使用此函数创建二值信号量的话信号量所需的 RAM 是由 FreeRTOS 的内存管理部分来动态分配的。此函数创建好的二值信号量默认是空的，也就是说刚创建好的二值信号量使用函数 xSemaphoreTake() 是获取不到的，此函数也是个宏，具体创建过程由函数 xQueueGenericCreate() 来完成，定义如下：
+```c
+/* 
+ * 返回值：
+ * NULL：       二值信号量创建失败
+ * 其他值：     创建成功的二值信号量的句柄
+ */
+SemaphoreHandle_t xSemaphoreCreateBinary( void )
+```
 
+3. 函数 xSemaphoreCreateBinaryStatic
+&emsp;&emsp;此函数所需的 RAM 需要由用户来分配，函数原型如下：
+```c
+/* 
+ * pxSemaphoreBuffer：  此参数指向一个 StaticSemaphore_t 类型的变量，用来保存信号量结构体
+ * 
+ * 返回值：
+ * NULL：   二值信号量创建失败
+ * 其他值： 创建成功的二值信号量句柄
+ */
+SemaphoreHandle_t xSemaphoreCreateBinaryStatic( StaticSemaphore_t *pxSemaphoreBuffer )
+```
 
+#### 14.2.3 二值信号量创建过程分析
+&emsp;&emsp;二值信号量创建的队列是没有存储区的队列，使用队列是否为空来表示二值信号量，而队列是否为空可以通过队列结构体的成员变量 uxMessageWaiting 来判断。
 
+#### 14.2.4 释放信号量
+&emsp;&emsp;释放信号量的函数有两个，如下表所示：
 
+| 函数                    | 描述                 |
+| ----------------------- | -------------------- |
+| xSemaphoreGive()        | 任务级信号量释放函数 |
+| xSemaphoreGiveFromISR() | 中断级信号量释放函数 |
 
+&emsp;&emsp;不管是二值信号量、计数型信号量还是互斥信号量，都使用上表中的函数释放信号量，递归互斥信号量有专用的释放函数。
 
+1. 函数 xSemaphoreGive
+&emsp;&emsp;函数原型如下：
+```c
+/* 
+ * xSemaphore：     要释放的信号量句柄
+ *
+ * 返回值：
+ * pdPASS：         释放信号量成功
+ * errQUEUE_FULL：  释放信号量失败
+ */
+BaseType_t xSemaphoreGive( xSemaphore )
+```
+&emsp;&emsp;宏定义如下：
+```c
+#define xSemaphoreGive( xSemaphore )                        \		
+    xQueueGenericSend( ( QueueHandle_t ) ( xSemaphore ),    \
+    NULL,                                                   \
+    semGIVE_BLOCK_TIME,                                     \
+    queueSEND_TO_BACK )                                     \
+```
+&emsp;&emsp;可以看出任务级释放信号量就是向队列发送消息的过程，只是这里并没有发送具体的消息，阻塞时间为 0，入队方式为后向入队。入队的时候队列结构体成员变量 uxMessageWaiting 会加一，对于二值信号量通过判断 uxMessagesWaiting 就可以知道信号量是否有效了，当 uxMessageWaiting 为 1 的话说明二值信号量有效，为 0 就无效。如果队列满的话就返回错误值 errQUEUE_FULL，提示队列满，入队失败。
 
+2. 函数 xSemaphoreGiveFromISR
+&emsp;&emsp;此函数用于在中断中释放信号量，此函数只能用来释放二值信号量和计数型信号量，绝对不能用来在中断服务函数中释放互斥信号量。函数原型如下：
+```c
+/* 
+ * xSemaphore：                 要释放的信号量句柄
+ * pxHigherPriorityTaskWoken：  标记退出此函数以后是否进行任务切换，这个变量的值由这三个函数来
+ *                              设置的，用户不用进行设置，用户只需要提供一个变量来保存这个值就
+ *                              行了。当此值为 pdTRUE 的时候在退出中断服务函数之前一定要进行一
+ *                              次任务切换。
+ *
+ * 返回值
+ * pdPASS：                     释放信号量成功
+ * errQUEUE_FULL：              释放信号量失败
+ */
+xSemaphoreGiveFromISR(SemaphoreHandle_t xSemaphore,
+                    BaseType_t *pxHigherPriorityTaskWoken)
+```
+&emsp;&emsp;此函数不能用于在中断中释放互斥信号量，因为互斥信号量涉及到优先级继承的问题，而中断不属于任务，没法处理中断优先级继承。
+#### 14.2.5 获取信号量
 
+| 函数                    | 描述                 |
+| ----------------------- | -------------------- |
+| xSemaphoreTake()        | 任务级获取信号量函数 |
+| xSemaphoreTakeFromISR() | 中断级获取信号量函数 |
 
+&emsp;&emsp;同释放信号量的 API 函数，不管是二值信号量、计数型信号量还是互斥信号量，它们都使用上表中的函数获取信号量。
 
-
-
-
-
-
-
-
+1. 函数 xSemaphoreTake
+&emsp;&emsp;此函数用于获取二值信号量、计数型信号量或互斥信号量，函数原型如下：
+```c
+/* 
+ * xSemaphore：     要获取的信号量句柄
+ * xBlockTime：     阻塞时间
+ *
+ * 返回值：
+ * pdTRUE：         获取信号量成功
+ * pdFALSE：        超时，获取信号量失败
+ */
+BaseType_t xSemaphoreTake(SemaphoreHandle_t xSemaphore,
+                TickType_t xBlockTime)
+```
 
 
 
