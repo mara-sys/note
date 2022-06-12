@@ -1,5 +1,7 @@
 # Docker
 [原文连接](https://www.runoob.com/docker/docker-container-connection.html)
+[toc]
+
 ## 2、Docker 架构
 &emsp;&emsp;Docker 包括三个基本概念：
 * 镜像（Image）：Docker 镜像，就相当于是一个 root 文件系统。
@@ -395,18 +397,86 @@ runoob@runoob:~$ docker tag 860c279d2fec runoob/centos:dev
 
 ### 4.4 Docker 容器连接
 &emsp;&emsp;容器中可以运行一些网络应用，要让外部也可以访问这些应用，可以通过 -P 或 -p 参数来指定端口映射。下面我们来实现通过端口连接到一个 docker 容器。
+#### 4.4.1 网络端口映射
+&emsp;&emsp;我们创建了一个 python 应用的容器
+```shell
+runoob@runoob:~$ docker run -d -P training/webapp python app.py
+fce072cc88cee71b1cdceb57c2821d054a4a59f67da6b416fceb5593f059fc6d
+```
+&emsp;&emsp;可以使用 -P 或 -p 标识来指定容器端口绑定到主机端口。
+&emsp;&emsp;两种方式的区别是：
+* -P：是容器内部端口随机映射到主机的端口
+* -p：是容器内部端口绑定到指定的主机的端口
 
+```shell
+runoob@runoob:~$ docker run -d -p 5000:5000 training/webapp python app.py
+```
 
+&emsp;&emsp;另外，我们可以指定容器绑定的网络地址，比如绑定 127.0.0.1
+```shell
+runoob@runoob:~$ docker run -d -p 127.0.0.1:5001:5000 training/webapp python app.py
+```
+&emsp;&emsp;这样我们就可以通过访问 127.0.0.1:5001 来访问容器的 5000 端口。
+&emsp;&emsp;上面的例子中，默认都是绑定 tcp 端口，如果要绑定 UDP 端口，可以在端口后面加上 /udp。
+```shell
+runoob@runoob:~$ docker run -d -p 127.0.0.1:5000:5000/udp training/webapp python app.py
+```
+&emsp;&emsp;docker port 命令可以让我们快捷的查看端口的绑定情况。
+```shell
+runoob@runoob:~$ docker port adoring_stonebraker 5000
+127.0.0.1:5001
+```
+#### 4.4.2 Docker 容器互联
+&emsp;&emsp;端口映射并不是唯一把 docker 连接到另一个容器的方法。
+&emsp;&emsp;docker 有一个连接系统允许将多个容器连接在一起，共享连接信息。
+&emsp;&emsp;docker 连接会创建一个父子关系，其中父容器可以看到子容器的信息。
+##### 4.4.2.1 容器命名
+&emsp;&emsp;当我们创建一个容器的时候，docker 会自动对它进行命名。另外，我们也可以使用 --name 标识来命名容器，例如：
+```shell
+runoob@runoob:~$  docker run -d -P --name runoob training/webapp python app.py
+```
+&emsp;&emsp;我们可以使用 docker ps 命令来查看容器名称。
+```shell
+runoob@runoob:~$ docker ps -l
+CONTAINER ID     IMAGE            COMMAND           ...    PORTS                     NAMES
+43780a6eabaa     training/webapp   "python app.py"  ...    0.0.0.0:32769->5000/tcp   runoob
+```
 
+##### 4.4.2.2 新建网络
+&emsp;&emsp;先创建一个新的 Docker 网络
+```shell
+$ docker network create -d bridge test-net
+```
+&emsp;&emsp;参数说明：
+* -d：参数指定 Docker 网络类型，有 bridge、overlay。
+其中 overlay 网络类型用于 Swarm mode，在本小节中你可以忽略它。
 
+##### 4.4.2.3 连接容器
+&emsp;&emsp;运行一个容器并连接到新建的 test-net 网络：
+```shell
+$ docker run -itd --name test1 --network test-net ubuntu /bin/bash
+```
+&emsp;&emsp;打开新的终端，再运行一个容器并加入到 test-net 网络。
+```shell
+$ docker run -itd --name test2 --network test-net ubuntu /bin/bash
+```
+&emsp;&emsp;下面通过 ping 来证明 test1 容器和 test2 容器建立了互联关系。
+&emsp;&emsp;如果 test1、test2 容器内无 ping 命令，则在容器内执行以下命令安装 ping。
+```shell
+apt-get update
+apt install iputils-ping
+```
+&emsp;&emsp;在 test1 容器输入以下命令：
+```shell
+ping test2
+```
+&emsp;&emsp;可以看到成功 ping 通了。
+&emsp;&emsp;这样，test1 容器和 test2 容器建立了互联关系。
 
+#### 4.4.3 配置 DNS
 
-
-
-
-
-
-
+### 4.4.5 Docker 仓库管理
+&emsp;&emsp;仓库（Repository）是集中存放镜像的地方。以下介绍一下 Docker Hub。当然不止 docker hub，只是远程的服务商不一样，操作都是一样的。
 
 
 
