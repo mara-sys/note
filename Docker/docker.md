@@ -478,6 +478,9 @@ ping test2
 ### 4.4.5 Docker 仓库管理
 &emsp;&emsp;仓库（Repository）是集中存放镜像的地方。以下介绍一下 Docker Hub。当然不止 docker hub，只是远程的服务商不一样，操作都是一样的。
 
+#### 4.4.5.1 Docker Hub
+&emsp;&emsp;目前 Docker 官方维护了一个公共仓库 Docker Hub.
+&emsp;&emsp;大部分需求都可以通过在 Docker Hub 中直接下载镜像来实现。
 
 
 
