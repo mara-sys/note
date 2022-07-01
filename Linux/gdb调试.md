@@ -313,7 +313,7 @@ source <scriptfilepath>
 ```shell
 pctrace
 ```
-&emsp;&emsp;对于结果，标号考前的地址是最近的跳转轨迹。
+&emsp;&emsp;对于结果，标号靠前的地址是最近的跳转轨迹。
 
 
 
