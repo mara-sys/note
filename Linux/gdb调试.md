@@ -236,18 +236,84 @@ info registers <regname…>
 ```
 &emsp;&emsp;查看具体的某个寄存器， regname 表示具体寄存器名字，可以是多个。
 &emsp;&emsp;寄存器中放置了运行时数据，比如程序当前运行的指令地址（pc），程序的当前堆栈指针（sp）等等。同样可以使用 print 命令来访问寄存器的情况，只需要在寄存器名字前加一个 $ 符号就可以了。如：p $pc。
+&emsp;&emsp;由于 CSKY CPU 内部寄存器较多，csky-abiv2-elf-gdb 内部对所有 CPU 对应的寄存器进行了分组， csky-abiv2-elf-gdb 支持寄存器的分组查看功能，只需要在普通查看下加上寄存器组名即可。
+```shell
+info registers general
+```
+&emsp;&emsp;查看 CPU 通用寄存器。
+```shell
+info registers cr
+```
+&emsp;&emsp;查看 CPU 全部控制寄存器。
+```shell
+info registers fr
+```
+&emsp;&emsp;查看 CPU 全部浮点寄存器。
+```shell
+info registers vr
+```
+&emsp;&emsp;查看 CPU 全部向量寄存器，仅存在与 CK810 处理器中。
+```shell
+info registers mmu
+```
+&emsp;&emsp;查看 CPU 全部内存管理相关的控制寄存器。
+```shell
+info registers profiling
+```
+&emsp;&emsp;查看 CPU 全部 profiling 相关寄存器，仅存在于 CK810 处理器中。
+
+### 2.16 修改变量值
+&emsp;&emsp;修改被调试程序运行时的变量值，在 T-HEAD 调试器中很容易实现，使用 T-HEAD 调试器的 set 命令即可完成。如：
+```shell
+(cskygdb) set x=4 （比如 set endcommand=7）
+```
+### 2.17 修改寄存器值
+&emsp;&emsp;使用 set 命令即可完成。
+```shell
+(cskygdb) set $r0=4
+```
+
+### 2.18 restore 命令
+&emsp;&emsp;调试器可以在动态调试中，随时将目标文件中的程序加载到目标板的相应的内存中。
+```shell
+restore <filename> <offset> [ <startaddr> <endaddr>]
+```
+&emsp;&emsp;其中 filename 是需要加载的文件名，可以使 elf 文件，也可以是 bin 文件或者 hex 文件， offset 是程序在文件中指定的地址与即将加载地址之间的偏移；可选参数 startaddr、 endaddr 如果给出，则表示仅向目标板加载这个地址区间的程序，超过这个地址范围的程序则会忽略。
+&emsp;&emsp;我没看懂这个 offset 是什么意思，用的时候会出错，我实际使用的命令是下面这样子的：
+```shell
+restore filename binary startaddress
+```
+&emsp;&emsp;需要指定 binary，否则会报错`is not a recognized file format`。
+
+### 2.19 dump/append 命令
+&emsp;&emsp;调试器不仅支持动态的加载文件到内存，还支持实时的将目标板内存中的信息抽取出来，并以文件的形式保存下来，这个功能由 dump/append 命令来实现。
+```shell
+dump/append binary
+```
+&emsp;&emsp;将目标板的指令和数据以二进制流保存到文件。
 
 
+### 2.20 call function 命令
+&emsp;&emsp;在调试程序的时候，调试器允许用户自由的调用程序中的任意函数，用户可以通过自己输入函数的参数，然后观察函数返回值。
+```shell
+call <function(arg1,arg2…)>
+```
+&emsp;&emsp;其中，function 是函数名，arg 是参数列表，当命令完成后，调试器会输出函数执行的返回结果。
 
+### 2.21 source 命令
+&emsp;&emsp;调试器在开启后的任何时候，都可以通过 source 命令来执行脚本。
+```shell
+source <scriptfilepath>
+```
+&emsp;&emsp;其中`<scriptfilepath>`是脚本名称。
 
-
-
-
-
-
-
-
-
+## 第三章 T-HEAD 拓展调试命令
+### 3.1 pctrace 命令
+&emsp;&emsp;CK-KPU 硬件上提供了一个记录 PC 跳转轨迹的单元，可以记录最近 8 次跳转指令的地址的值，可以通过 T-HEAD 调试器的 pctrace 命令来查看程序运行时的 PC 跳转轨迹。直接在命令栏输入 pctrace，或者其简写命令 pc 即可。
+```shell
+pctrace
+```
+&emsp;&emsp;对于结果，标号考前的地址是最近的跳转轨迹。
 
 
 
