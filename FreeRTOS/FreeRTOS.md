@@ -1,4 +1,7 @@
 # FreeRTOS STM32F4
+
+[toc] 
+
 ## 第一章 FreeRTOS简介
 #### 1.3.2 FreeRTOS文件预览
 &emsp;&emsp;FreeRTOS文件夹下有`FreeRTOS`和`FreeRTOS-Plus`两个文件夹，区别是Plus的功能比普通的功能强大一点。`FreeRTOS`文件夹下有三个文件夹`Demo`、`License`、`Source`，`Demo`中是针对不同芯片的例程，移植时可以参考，`Source`就是FreeRTOS的源码。  
