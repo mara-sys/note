@@ -56,6 +56,22 @@ break -offset 或 b –offset
 ```
 &emsp;&emsp;在当前行号的前面或后面的 offset 行停住。offset 为自然数。
 
+###### for 循环中断点
+&emsp;&emsp;如果在 for 循环中，想要在`i == 100`时停下，可以像下面这样设置
+```c
+83  if (mode == DIMENSION1) {
+84      for (int i = 0; i < length; i++) {
+85          if (src[i] != dst[i]) {
+86              printf("compare error, src[%5d]:%02x, dst[%5d]:%02x\r\n", i, src[i], i, dst[i]);
+87              return -1;
+88          }
+89      }
+90  }
+```
+```shell
+b main.c:85 i == 100
+```
+
 ###### 注解：
 offset 的范围为：只要存在（当前行数 +offset）这一行就可以。
 
