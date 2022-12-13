@@ -478,11 +478,47 @@ ping test2
 ### 4.5 Docker 仓库管理
 &emsp;&emsp;仓库（Repository）是集中存放镜像的地方。以下介绍一下 Docker Hub。当然不止 docker hub，只是远程的服务商不一样，操作都是一样的。
 
-#### 4.4.5.1 Docker Hub
+#### 4.5.1 Docker Hub
 &emsp;&emsp;目前 Docker 官方维护了一个公共仓库 Docker Hub.
 &emsp;&emsp;大部分需求都可以通过在 Docker Hub 中直接下载镜像来实现。
+&emsp;&emsp;[docker 官网](https://hub.docker.com/)  
 
-......
+#### 4.5.2 登录和退出
+```shell
+# 登录
+docker login
+
+# 退出
+docker logout
+```
+&emsp;&emsp;marasys
+
+#### 4.5.3 拉取镜像
+&emsp;&emsp;可以通过`docker search`命令来查找官方仓库中的镜像，并利用`docker pull`命令来将他下载到本地。
+```shell
+docker search ubuntu
+
+docker pull ubuntu
+```
+
+#### 4.5.4 推送镜像
+&emsp;&emsp;用户登录后，可以通过`docker push`命令将自己的镜像推送到 Docker Hub。  
+&emsp;&emsp;以下命令中的 username 替换为自己的 Docker 账号用户名。  
+```shell
+docker tag ubuntu:18.04 username/ubuntu:18.04
+$ docker image ls
+
+REPOSITORY      TAG        IMAGE ID            CREATED           ...  
+ubuntu          18.04      275d79972a86        6 days ago        ...  
+username/ubuntu 18.04      275d79972a86        6 days ago        ...  
+$ docker push username/ubuntu:18.04
+$ docker search username/ubuntu
+
+NAME             DESCRIPTION       STARS         OFFICIAL    AUTOMATED
+username/ubuntu
+```
+
+
 
 ### 4.6 Docker Dockerfile
 &emsp;&emsp;Dockerfile 是一个用来构建镜像的文本文件，文本内容包含了一条条构建镜像所需的指令和说明。
@@ -625,6 +661,40 @@ nginx -c /etc/nginx/new.conf
 
 
 
+
+
+## docker 基础命令
+```shell
+# 使用镜像启动一个容器
+docker run -it ubuntu /bin/bash
+
+# 查看所有容器
+docker ps -a
+
+# 查看运行着的容器
+docker ps
+
+# 启动一个已停止的容器
+docker start [docker id]
+
+# 重启停止的容器
+docker restart [docker id]
+
+# 进入容器
+docker attach 1e560fca3906
+
+# 停止容器
+docker stop [docker_names]/[docker id]
+
+# 导入容器
+cat docker/ubuntu.tar | docker import - test/ubuntu:v1
+
+# 导出容器
+docker export 1e560fca3906 > ubuntu.tar
+
+# 删除容器
+docker rm -f 1e560fca3906
+```
 
 
 
