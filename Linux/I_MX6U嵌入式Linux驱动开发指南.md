@@ -85,6 +85,35 @@
       - [54.2.2 platform 驱动](#5422-platform-驱动)
   - [第五十八章 Linux INPUT子系统实验](#第五十八章-linux-input子系统实验)
 
+&emsp;&emsp;环境都搭建好了，操作流程如下：
+![开发板](./I_MX6U嵌入式Linux驱动开发指南_images/开发板Linux使用.png)  
+在此目录下：
+```shell
+./imxdownload u-boot.bin /dev/sdb
+```
+拨码开关：1、7 on
+启动，在 uboot 中设置环境变量：
+```shell
+setenv bootargs 'console=ttymxc0,115200 root=/dev/nfs nfsroot=192.168.31.118:/home/lst/linux/nfs/rootfs,proto=tcp rw ip=192.168.31.55:192.168.31.118:192.168.31.1:255.255.255.0::eth0:off'
+setenv ipaddr 192.168.31.55
+setenv ethaddr 00:04:9f:04:d2:90
+setenv gatewayip 192.168.31.1
+setenv netmask 255.255.255.0
+setenv serverip 192.168.31.118
+setenv bootcmd 'tftp 80800000 zImage; tftp 83000000 imx6ull-alientek-emmc.dtb; bootz 80800000 - 83000000'
+saveenv
+```
+把编译的linux内核和设备树文件放到tftp目录下面，
+```shell
+cp ./arch/arm/boot/zImage ~/linux/tftpboot/
+cp ./arch/arm/boot/dts/imx6ull-alientek-emmc.dtb ~/linux/tftpboot/
+```
+然后
+```shell
+run bootcmd
+```
+
+
 
 # 第四篇 ARM Linux 驱动开发篇
 &emsp;&emsp;查看设备状态总结
