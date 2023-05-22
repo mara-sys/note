@@ -21,7 +21,7 @@ gcc [options] [filenames]
 ```
 &emsp;&emsp;其中，options就是编译器所需要的参数，filenames给出相关的文件名称，最常用的有以下参数：
 * -c：只编译，不链接成为可执行文件。 编译器只是由输入的 .c 等源代码文件生成 .o 为后缀的目标文件，通常用于编译不包含主程序的子程序文件。
-* -o output_filename：只编译，不链接成为可执行文件。 编译器只是由输入的 .c 等源代码文件生成 .o 为后缀的目标文件，通常用于编译不包含主程序的子程序文件。
+* -o output_filename：确定输出文件的名称为-o output_filename。 同时这个名称不能和源文件同名。如果不给出这个选项，gcc就给出默认的可执行文件 a.out。
 * -g：产生符号调试工具（GNU的 gdb）所必要的符号信息。 想要对源代码进行调试，就必须加入这个选项。
 * -O：对程序进行优化编译、链接。 采用这个选项，整个源代码会在编译、链接过程中进行优化处理，这样产生的可执行文件的执行效率可以提高，但是编译、链接的速度就相应地要慢一些，而且对执行文件的调试会产生一定的影响，造成一些执行效果与对应源文件代码不一致等一些令人“困惑”的情况。因此，一般在编译输出软件发行版时使用此选项。
 * -O2：比 -O 更好的优化编译、链接。当然整个编译链接过程会更慢。
@@ -160,13 +160,30 @@ make --file Make.AIX
 ```Makefile
 include <filename>
 ```
-filename可以是当前操作系统Shell的文件模式（可以包含路径和通配符）
+&emsp;&emsp;filename可以是当前操作系统Shell的文件模式（可以包含路径和通配符）。
+&emsp;&emsp;在include前面可以有一些空字符，但是绝不能是[Tab]键开始。include和<filename>可以用一个或多个空格隔开。举个例子，你有这样几个Makefile：a.mk、b.mk、c.mk，还有一个文件叫foo.make，以及一个变量$(bar)，其包含了e.mk和f.mk，那么，下面的语句：
+```shell
+include foo.make *.mk $(bar)
+```
+&emsp;&emsp;等价于：
+```shell
+include foo.make a.mk b.mk c.mk e.mk f.mk
+```
 
-在include前面可以有一些空字符，但是绝不能是[Tab]键开始。include和<filename>可以用一个或多个空格隔开。举个例子，你有这样几个Makefile：a.mk、b.mk、c.mk，还有一个文件叫foo.make，以及一个变量$(bar)，其包含了e.mk和f.mk，那么，下面的语句：
+......
 
+### 2.4.4 环境变量 MAKEFILES
+......
 
-
-
+### 2.4.5 make 的工作方式
+&emsp;&emsp;GNU 的 make 工作时的执行步骤入下： 
+1. 读入所有的 Makefile。
+2. 读入被 include 的其它 Makefile。
+3. 初始化文件中的变量。
+4. 推导隐晦规则，并分析所有规则。
+5. 为所有的目标文件创建依赖关系链。
+6. 根据依赖关系，决定哪些目标要重新生成。
+7. 执行生成命令。
 
 
 
